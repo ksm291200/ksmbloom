@@ -1,0 +1,3148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bloom ✦</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ────────────────────────────────────────────
+   ROOT & RESET
+──────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; }
+
+:root {
+  --blush: #EEC5CB;
+  --lavender: #C8B8E8;
+  --mint: #9DCFB5;
+  --peach: #F2C49A;
+  --bg: #FAF8F5;
+  --text: #2D2428;
+  --muted: #8B7D82;
+  --card: #FFFFFF;
+  --border: #EDE8E4;
+  --shadow: 0 2px 12px rgba(45,36,40,.07);
+  --shadow-lg: 0 8px 32px rgba(45,36,40,.13);
+  --r: 16px;
+  --sw: 220px;
+  --blush-l: #F7E8EB;
+  --lav-l: #EBE6F5;
+  --mint-l: #DFF2E9;
+  --peach-l: #FDF0E2;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+/* ────────────────────────────────────────────
+   PIN SCREEN
+──────────────────────────────────────────── */
+#pin-screen {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 1000; gap: 1.5rem;
+}
+
+.pin-logo {
+  font-family: 'Fraunces', serif;
+  font-size: 3rem; font-weight: 400;
+  color: var(--text); letter-spacing: -.02em;
+}
+.pin-logo span { color: var(--blush); }
+
+.pin-tagline {
+  font-size: .82rem; color: var(--muted);
+  margin-top: .3rem; letter-spacing: .06em; text-align: center;
+}
+
+.pin-dots { display: flex; gap: 14px; }
+.pin-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--border); transition: background .2s;
+}
+.pin-dot.filled { background: var(--lavender); }
+.pin-dot.err    { background: #E57373; }
+
+.pin-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 68px);
+  gap: 10px;
+}
+.pin-btn {
+  width: 68px; height: 68px; border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--card);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 1.25rem; font-weight: 600;
+  color: var(--text); cursor: pointer;
+  transition: all .15s;
+  box-shadow: var(--shadow);
+  display: flex; align-items: center; justify-content: center;
+}
+.pin-btn:hover { background: var(--lav-l); transform: scale(1.05); }
+.pin-btn:active { transform: scale(.96); }
+.pin-btn.del { font-size: 1rem; color: var(--muted); }
+.pin-btn.zero { grid-column: 2; }
+
+.pin-err {
+  font-size: .78rem; color: #E57373;
+  min-height: 1.2em; font-weight: 600;
+  transition: opacity .2s;
+}
+
+/* ────────────────────────────────────────────
+   APP LAYOUT
+──────────────────────────────────────────── */
+#app { display: none; height: 100vh; overflow: hidden; }
+#app.visible { display: flex; }
+
+/* SIDEBAR */
+.sidebar {
+  width: var(--sw); min-width: var(--sw);
+  height: 100vh; background: var(--card);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  padding: 1.5rem 0; overflow-y: auto;
+  transition: width .3s, min-width .3s; z-index: 10;
+}
+
+.sb-logo { padding: 0 1.25rem 1.5rem; border-bottom: 1px solid var(--border); margin-bottom: .75rem; }
+.sb-logo .lt { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 400; color: var(--text); letter-spacing: -.02em; }
+.sb-logo .lt span { color: var(--blush); }
+.sb-logo .ls { font-size: .68rem; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; margin-top: 2px; }
+
+.nav-i {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 1.25rem; cursor: pointer;
+  transition: all .15s; font-size: .875rem; font-weight: 500;
+  color: var(--muted); border-left: 3px solid transparent;
+  white-space: nowrap;
+}
+.nav-i:hover { background: var(--bg); color: var(--text); }
+.nav-i.active { background: var(--lav-l); color: var(--text); border-left-color: var(--lavender); font-weight: 700; }
+.nav-e { font-size: 1.1rem; flex-shrink: 0; }
+
+.sb-foot {
+  margin-top: auto; padding: 1rem 1.25rem;
+  font-size: .68rem; color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+
+/* MAIN */
+.main { flex: 1; overflow-y: auto; height: 100vh; background: var(--bg); }
+
+.section { display: none; padding: 2rem; animation: fadeIn .25s ease; }
+.section.active { display: block; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ────────────────────────────────────────────
+   TYPOGRAPHY
+──────────────────────────────────────────── */
+.s-title {
+  font-family: 'Fraunces', serif; font-size: 1.85rem;
+  font-weight: 400; color: var(--text); letter-spacing: -.02em;
+  margin-bottom: .2rem;
+}
+.s-sub { font-size: .83rem; color: var(--muted); margin-bottom: 1.5rem; }
+.card-title { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 500; color: var(--text); margin-bottom: .75rem; }
+
+/* ────────────────────────────────────────────
+   CARD
+──────────────────────────────────────────── */
+.card {
+  background: var(--card); border-radius: var(--r);
+  padding: 1.25rem; box-shadow: var(--shadow); border: 1px solid var(--border);
+}
+
+/* STAT STRIP */
+.stat-strip { display: grid; grid-template-columns: repeat(4,1fr); gap: 1rem; margin-bottom: 1.5rem; }
+.stat-c { background: var(--card); border-radius: var(--r); padding: 1.1rem 1.25rem; box-shadow: var(--shadow); border: 1px solid var(--border); }
+.stat-lbl { font-size: .7rem; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; font-weight: 700; margin-bottom: 4px; }
+.stat-val { font-family: 'Fraunces', serif; font-size: 2rem; font-weight: 400; color: var(--text); line-height: 1; letter-spacing: -.03em; }
+.stat-u { font-family: 'Plus Jakarta Sans', sans-serif; font-size: .78rem; color: var(--muted); margin-left: 3px; }
+
+/* ────────────────────────────────────────────
+   LAYOUT UTILITIES
+──────────────────────────────────────────── */
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.g3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; }
+.g4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 1rem; }
+.mb1 { margin-bottom: .75rem; }
+.mb2 { margin-bottom: 1.25rem; }
+.mt1 { margin-top: .75rem; }
+.tm  { color: var(--muted); font-size: .82rem; }
+.ts  { font-size: .78rem; }
+.fw6 { font-weight: 600; }
+.fw7 { font-weight: 700; }
+.div { height: 1px; background: var(--border); margin: .75rem 0; }
+
+/* ────────────────────────────────────────────
+   CHIPS
+──────────────────────────────────────────── */
+.chip { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 20px; font-size: .7rem; font-weight: 700; letter-spacing: .02em; }
+.ch-indian       { background: var(--peach-l); color: #9B4A00; }
+.ch-south-indian { background: #FFF3E0; color: #8D4F00; }
+.ch-thai         { background: #F3E5F5; color: #6A1B9A; }
+.ch-chinese      { background: #FFEBEE; color: #C62828; }
+.ch-japanese     { background: var(--blush-l); color: #880E4F; }
+.ch-italian      { background: #E8F5E9; color: #1B5E20; }
+.ch-mexican      { background: #FFFDE7; color: #E65100; }
+.ch-other        { background: var(--lav-l); color: #4527A0; }
+.ch-breakfast    { background: var(--peach-l); color: #9B4A00; }
+.ch-lunch        { background: var(--mint-l); color: #1B5E20; }
+.ch-snack        { background: var(--blush-l); color: #880E4F; }
+.ch-dinner       { background: var(--lav-l); color: #4527A0; }
+
+/* ────────────────────────────────────────────
+   BUTTONS
+──────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 6px; padding: 8px 16px; border-radius: 10px; border: none;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: .82rem; font-weight: 600; cursor: pointer; transition: all .15s;
+}
+.btn-p  { background: var(--lavender); color: var(--text); }
+.btn-p:hover { background: #B8A5DC; transform: translateY(-1px); }
+.btn-s  { background: var(--bg); color: var(--text); border: 1.5px solid var(--border); }
+.btn-s:hover { background: var(--border); }
+.btn-m  { background: var(--mint); color: var(--text); }
+.btn-m:hover { background: #82BFA3; }
+.btn-bl { background: var(--blush); color: var(--text); }
+.btn-bl:hover { background: #D9ACB3; }
+.btn-g  { background: transparent; color: var(--muted); border: 1.5px solid var(--border); }
+.btn-g:hover { background: var(--bg); }
+.btn-sm { padding: 5px 10px; font-size: .75rem; border-radius: 8px; }
+.btn-lg { padding: 11px 22px; font-size: .9rem; }
+.btn-d  { background: #FFEBEE; color: #C62828; border: 1.5px solid #FFCDD2; }
+.btn-d:hover { background: #FFCDD2; }
+
+.full-btn {
+  width: 100%; padding: 13px; border-radius: 12px; border: none;
+  background: linear-gradient(135deg, var(--lavender), var(--mint));
+  color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: .9rem; font-weight: 700; cursor: pointer; transition: all .2s; margin-top: 1rem;
+}
+.full-btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+
+/* ────────────────────────────────────────────
+   INPUTS
+──────────────────────────────────────────── */
+input[type=text], input[type=number], select, textarea {
+  font-family: 'Plus Jakarta Sans', sans-serif; font-size: .875rem;
+  border: 1.5px solid var(--border); border-radius: 10px;
+  padding: 9px 12px; background: var(--bg); color: var(--text);
+  width: 100%; outline: none; transition: border-color .15s;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--lavender); }
+textarea { resize: vertical; min-height: 80px; }
+label { font-size: .78rem; font-weight: 700; color: var(--text); display: block; margin-bottom: 4px; }
+.fg { margin-bottom: .9rem; }
+
+.si-wrap { position: relative; }
+.si-wrap::before { content: '🔍'; position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: .82rem; pointer-events: none; }
+.si-wrap input { padding-left: 32px; }
+
+/* ────────────────────────────────────────────
+   NOTE BOX
+──────────────────────────────────────────── */
+.note-box {
+  background: var(--peach-l); border-radius: 10px;
+  padding: .75rem 1rem; font-size: .8rem; color: var(--text);
+  border-left: 3px solid var(--peach); margin-bottom: .75rem;
+}
+
+/* ────────────────────────────────────────────
+   DASHBOARD
+──────────────────────────────────────────── */
+.greeting h1 {
+  font-family: 'Fraunces', serif; font-size: 2rem; font-weight: 400;
+  letter-spacing: -.02em; color: var(--text); line-height: 1.2;
+}
+.greeting p { font-size: .83rem; color: var(--muted); margin-top: 4px; margin-bottom: 1.5rem; }
+
+.ci-g { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: .9rem; }
+
+.mood-row { display: flex; gap: 8px; margin-top: 4px; }
+.mood-btn {
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 2px solid var(--border); background: var(--bg);
+  font-size: 1.3rem; cursor: pointer; transition: all .15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.mood-btn:hover { transform: scale(1.15); }
+.mood-btn.sel   { border-color: var(--lavender); background: var(--lav-l); }
+
+.e-row { display: flex; gap: 6px; }
+.e-btn {
+  width: 32px; height: 32px; border-radius: 8px;
+  border: 1.5px solid var(--border); background: var(--bg);
+  font-size: .78rem; font-weight: 700; cursor: pointer;
+  color: var(--muted); transition: all .15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.e-btn:hover { background: var(--peach-l); }
+.e-btn.sel    { background: var(--peach); border-color: var(--peach); color: var(--text); }
+
+.water-c { display: flex; align-items: center; gap: 8px; }
+.w-btn {
+  width: 30px; height: 30px; border-radius: 8px;
+  border: 1.5px solid var(--border); background: var(--bg);
+  font-size: 1.1rem; cursor: pointer; font-weight: 700;
+  color: var(--muted); display: flex; align-items: center; justify-content: center;
+  transition: all .15s;
+}
+.w-btn:hover { background: var(--mint-l); border-color: var(--mint); color: var(--text); }
+.w-disp { font-family: 'Fraunces', serif; font-size: 1.5rem; min-width: 2.5rem; text-align: center; }
+
+.prev-c {
+  background: var(--card); border-radius: var(--r);
+  padding: 1.1rem 1.25rem; border: 1px solid var(--border);
+  box-shadow: var(--shadow); cursor: pointer; transition: all .15s;
+}
+.prev-c:hover { box-shadow: var(--shadow-lg); transform: translateY(-1px); }
+
+.mp-slot {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 0; border-bottom: 1px solid var(--border); font-size: .82rem;
+}
+.mp-slot:last-child { border-bottom: none; }
+
+/* ────────────────────────────────────────────
+   MEAL PLANNER
+──────────────────────────────────────────── */
+.week-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+.week-lbl { font-family: 'Fraunces', serif; font-size: 1.1rem; font-weight: 500; }
+
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(138px, 1fr));
+  gap: .75rem; overflow-x: auto; padding-bottom: .5rem;
+}
+
+.day-hd {
+  text-align: center; padding: 8px; border-radius: 10px;
+  margin-bottom: 8px; background: var(--card); border: 1px solid var(--border);
+}
+.day-hd.today { background: var(--lav-l); border-color: var(--lavender); }
+.day-nm  { font-size: .68rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.day-num { font-family: 'Fraunces', serif; font-size: 1.3rem; font-weight: 400; color: var(--text); }
+
+.meal-slot {
+  background: var(--card); border-radius: 12px; border: 1px solid var(--border);
+  padding: 9px; margin-bottom: 7px; transition: all .15s;
+}
+.meal-slot:hover { box-shadow: var(--shadow); }
+
+.sl-lbl { font-size: .65rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+.sl-name { font-size: .78rem; font-weight: 600; color: var(--text); line-height: 1.3; margin-bottom: 3px; }
+.sl-meta { font-size: .7rem; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }
+
+.add-slot {
+  display: flex; align-items: center; justify-content: center;
+  gap: 4px; font-size: .75rem; color: var(--muted);
+  cursor: pointer; min-height: 52px;
+  border: 1.5px dashed var(--border); border-radius: 10px;
+  background: transparent; width: 100%; transition: all .15s;
+  margin-bottom: 7px; padding: 6px;
+}
+.add-slot:hover { border-color: var(--lavender); color: var(--lavender); background: var(--lav-l); }
+
+.eat-tog {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 7px; border-radius: 6px; font-size: .65rem; font-weight: 700;
+  cursor: pointer; border: 1.5px solid var(--border);
+  background: var(--bg); transition: all .15s; white-space: nowrap;
+}
+.eat-tog.done { background: var(--mint-l); border-color: var(--mint); color: #1B5E20; }
+
+/* ────────────────────────────────────────────
+   FOOD LIBRARY (KANBAN)
+──────────────────────────────────────────── */
+.kb-bar { display: flex; gap: .75rem; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; }
+.kb-bar input  { max-width: 260px; }
+.kb-bar select { max-width: 160px; }
+
+.kb-board { display: grid; grid-template-columns: repeat(4,1fr); gap: 1rem; align-items: start; }
+.kb-col   { background: var(--bg); border-radius: var(--r); padding: 1rem; min-height: 200px; }
+.kb-col-h { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 500; color: var(--text); margin-bottom: .75rem; }
+
+.meal-c {
+  background: var(--card); border-radius: 12px; padding: .85rem;
+  margin-bottom: .6rem; border: 1px solid var(--border);
+  cursor: pointer; transition: all .15s;
+  box-shadow: 0 1px 4px rgba(45,36,40,.04);
+}
+.meal-c:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+.meal-c-name { font-size: .875rem; font-weight: 700; color: var(--text); margin-bottom: 6px; line-height: 1.3; }
+.meal-c-meta { display: flex; justify-content: space-between; font-size: .7rem; color: var(--muted); margin-top: 5px; }
+
+/* ────────────────────────────────────────────
+   WORKOUTS
+──────────────────────────────────────────── */
+.phase-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 20px;
+  background: var(--lav-l); border: 1.5px solid var(--lavender);
+  font-size: .78rem; font-weight: 700; color: var(--text); margin-bottom: 1.25rem;
+}
+
+.sess-nav { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+.sess-lbl { font-family: 'Fraunces', serif; font-size: 1.15rem; font-weight: 500; flex: 1; text-align: center; }
+
+.ex-card { background: var(--card); border-radius: 12px; border: 1px solid var(--border); margin-bottom: .75rem; overflow: hidden; }
+.ex-hd { padding: .9rem 1rem; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: background .15s; }
+.ex-hd:hover { background: var(--bg); }
+.ex-hd .expand-icon { transition: transform .2s; color: var(--muted); }
+.ex-name { font-weight: 700; font-size: .9rem; color: var(--text); }
+.ex-sets { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+.ex-body { display: none; padding: 0 1rem 1rem; border-top: 1px solid var(--border); }
+.ex-body.open { display: block; }
+
+.ex-inst { font-size: .82rem; color: var(--text); line-height: 1.75; margin: .75rem 0; }
+.ex-inst li { margin-bottom: 4px; padding-left: 4px; }
+
+.yt-links { display: flex; gap: 8px; margin-bottom: .75rem; flex-wrap: wrap; }
+.yt-l {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: 8px;
+  background: #FFEBEE; color: #C62828;
+  font-size: .73rem; font-weight: 700; text-decoration: none; transition: all .15s;
+}
+.yt-l:hover { background: #FFCDD2; }
+
+.set-hd {
+  display: grid; grid-template-columns: 32px 1fr 1fr 1fr 32px;
+  gap: 5px; font-size: .7rem; font-weight: 700;
+  color: var(--muted); padding: 4px 0 6px;
+}
+.set-row { display: grid; grid-template-columns: 32px 1fr 1fr 1fr 32px; gap: 5px; align-items: center; margin-bottom: 5px; }
+.set-n   { font-size: .73rem; font-weight: 700; color: var(--muted); text-align: center; }
+.set-row input { font-size: .8rem; padding: 6px 7px; text-align: center; }
+.sd-btn {
+  width: 28px; height: 28px; border-radius: 7px;
+  border: 1.5px solid var(--border); background: var(--bg);
+  cursor: pointer; font-size: .82rem;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s; color: var(--muted);
+}
+.sd-btn.done { background: var(--mint-l); border-color: var(--mint); color: #1B5E20; }
+
+.eff-row { display: flex; flex-direction: column; gap: .5rem; }
+input[type=range] { -webkit-appearance: none; width: 100%; height: 6px; border-radius: 3px; background: var(--border); outline: none; border: none; padding: 0; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--lavender); cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+.eff-val { font-family: 'Fraunces', serif; font-size: 1.5rem; min-width: 2rem; text-align: center; }
+
+.wl-item { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: .83rem; }
+.wl-item:last-child { border-bottom: none; }
+
+/* ────────────────────────────────────────────
+   PROGRESS
+──────────────────────────────────────────── */
+.chart-wrap { position: relative; height: 280px; }
+
+.hm-grid { display: grid; grid-template-columns: repeat(13, 1fr); gap: 3px; }
+.hm-cell { aspect-ratio: 1; border-radius: 3px; background: var(--border); cursor: default; }
+.hm-cell:hover { outline: 2px solid var(--lavender); }
+.hm-cell.partial { background: var(--blush); }
+.hm-cell.full    { background: var(--lavender); }
+.hm-cell.fw      { background: var(--mint); }
+
+.hm-leg  { display: flex; gap: .9rem; align-items: center; margin-top: .75rem; font-size: .73rem; color: var(--muted); flex-wrap: wrap; }
+.lc      { width: 13px; height: 13px; border-radius: 3px; display: inline-block; margin-right: 3px; vertical-align: middle; }
+
+.month-c { background: var(--card); border-radius: var(--r); padding: 1.2rem; border: 1px solid var(--border); box-shadow: var(--shadow); }
+.ms-row  { display: flex; justify-content: space-between; align-items: center; font-size: .82rem; padding: 3px 0; }
+.ms-v    { font-weight: 700; color: var(--text); }
+
+/* ────────────────────────────────────────────
+   BLOODWORK
+──────────────────────────────────────────── */
+.bw-c { background: var(--card); border-radius: var(--r); padding: 1.1rem 1.25rem; border: 1px solid var(--border); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 5px; }
+.sc       { display: inline-flex; align-items: center; gap: 3px; padding: 3px 9px; border-radius: 20px; font-size: .68rem; font-weight: 700; letter-spacing: .03em; }
+.sc-crit  { background: #FFEBEE; color: #C62828; }
+.sc-flag  { background: #FFF8E1; color: #E65100; }
+.sc-watch { background: #E3F2FD; color: #0D47A1; }
+.sc-good  { background: var(--mint-l); color: #1B5E20; }
+.bw-mk { font-weight: 700; font-size: .9rem; color: var(--text); }
+.bw-v  { font-family: 'Fraunces', serif; font-size: 1.3rem; color: var(--text); }
+.bw-me { font-size: .78rem; color: var(--muted); line-height: 1.55; }
+.bw-pl { font-size: .78rem; color: var(--text); font-style: italic; line-height: 1.55; }
+
+/* ────────────────────────────────────────────
+   MODALS
+──────────────────────────────────────────── */
+.mo { position: fixed; inset: 0; background: rgba(45,36,40,.4); backdrop-filter: blur(4px); z-index: 200; display: none; align-items: center; justify-content: center; padding: 1.5rem; }
+.mo.open { display: flex; }
+.modal { background: var(--card); border-radius: 20px; box-shadow: var(--shadow-lg); width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto; animation: slideUp .25s cubic-bezier(.34,1.56,.64,1); }
+@keyframes slideUp { from { opacity:0; transform: translateY(24px) scale(.96); } to { opacity:1; transform: translateY(0) scale(1); } }
+.m-hd  { padding: 1.5rem 1.5rem 0; display: flex; align-items: flex-start; justify-content: space-between; }
+.m-title { font-family: 'Fraunces', serif; font-size: 1.3rem; font-weight: 400; color: var(--text); letter-spacing: -.02em; }
+.m-x  { width: 32px; height: 32px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--bg); cursor: pointer; font-size: 1rem; color: var(--muted); display: flex; align-items: center; justify-content: center; transition: all .15s; flex-shrink: 0; }
+.m-x:hover { background: var(--blush-l); }
+.m-body { padding: 1.25rem 1.5rem 1.5rem; }
+.macro-g { display: grid; grid-template-columns: repeat(4,1fr); gap: .6rem; margin-bottom: 1.25rem; }
+.macro-b { background: var(--bg); border-radius: 12px; padding: .75rem; text-align: center; }
+.macro-v { font-family: 'Fraunces', serif; font-size: 1.3rem; font-weight: 400; color: var(--text); }
+.macro-l { font-size: .68rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+
+.p-search { display: flex; gap: .5rem; margin-bottom: 1rem; }
+.p-list { max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
+.p-item { padding: 9px 12px; border-radius: 10px; border: 1.5px solid var(--border); background: var(--bg); cursor: pointer; transition: all .15s; display: flex; align-items: center; justify-content: space-between; }
+.p-item:hover { border-color: var(--lavender); background: var(--lav-l); }
+
+/* ────────────────────────────────────────────
+   TOAST
+──────────────────────────────────────────── */
+.toast-c { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 500; display: flex; flex-direction: column; gap: .5rem; pointer-events: none; }
+.toast { background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: .82rem; font-weight: 500; box-shadow: var(--shadow-lg); animation: tIn .3s ease; pointer-events: none; }
+.toast.ok  { background: #1B5E20; }
+.toast.err { background: #C62828; }
+@keyframes tIn  { from { opacity:0; transform: translateX(20px); } to   { opacity:1; transform: translateX(0); } }
+@keyframes tOut { from { opacity:1; transform: translateX(0); }    to   { opacity:0; transform: translateX(20px); } }
+.toast.out { animation: tOut .3s ease forwards; }
+
+/* ────────────────────────────────────────────
+   SCROLLBAR
+──────────────────────────────────────────── */
+/* ── PHASE SELECTOR ── */
+.phase-sel { display: flex; gap: .75rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.phase-sel-btn {
+  flex: 1; min-width: 130px; padding: .85rem 1rem;
+  border-radius: 12px; border: 1.5px solid var(--border);
+  background: var(--card); cursor: pointer;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  transition: all .15s; text-align: left; box-shadow: var(--shadow);
+}
+.phase-sel-btn:hover { border-color: var(--lavender); background: var(--lav-l); transform: translateY(-1px); }
+.phase-sel-btn.active { border-color: var(--lavender); background: var(--lav-l); box-shadow: 0 0 0 3px rgba(200,184,232,.25); }
+.phase-num { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 500; color: var(--text); }
+.phase-desc { font-size: .72rem; color: var(--muted); line-height: 1.4; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--lavender); }
+
+/* ────────────────────────────────────────────
+   RESPONSIVE
+──────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .sidebar { width: 60px; min-width: 60px; }
+  .sb-logo, .nav-i span, .sb-foot { display: none; }
+  .nav-e { font-size: 1.3rem; }
+  .nav-i { justify-content: center; padding: 12px; }
+  .kb-board { grid-template-columns: 1fr 1fr; }
+  .stat-strip { grid-template-columns: 1fr 1fr; }
+  .macro-g { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 640px) {
+  .kb-board { grid-template-columns: 1fr; }
+  .g2 { grid-template-columns: 1fr; }
+  .g3 { grid-template-columns: 1fr; }
+  .section { padding: 1rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     PIN SCREEN
+═══════════════════════════════════════════ -->
+<div id="pin-screen">
+  <div style="text-align:center;display:flex;flex-direction:column;align-items:center">
+    <div class="pin-logo">Bloom <span>✦</span></div>
+    <p class="pin-tagline">your personal wellness space</p>
+  </div>
+  <div class="pin-dots">
+    <div class="pin-dot" id="pd0"></div>
+    <div class="pin-dot" id="pd1"></div>
+    <div class="pin-dot" id="pd2"></div>
+    <div class="pin-dot" id="pd3"></div>
+  </div>
+  <div class="pin-pad">
+    <button class="pin-btn" onclick="pp('1')">1</button>
+    <button class="pin-btn" onclick="pp('2')">2</button>
+    <button class="pin-btn" onclick="pp('3')">3</button>
+    <button class="pin-btn" onclick="pp('4')">4</button>
+    <button class="pin-btn" onclick="pp('5')">5</button>
+    <button class="pin-btn" onclick="pp('6')">6</button>
+    <button class="pin-btn" onclick="pp('7')">7</button>
+    <button class="pin-btn" onclick="pp('8')">8</button>
+    <button class="pin-btn" onclick="pp('9')">9</button>
+    <button class="pin-btn del" onclick="pb()">⌫</button>
+    <button class="pin-btn zero" onclick="pp('0')">0</button>
+  </div>
+  <div class="pin-err" id="pinErr"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     APP SHELL
+═══════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sb-logo">
+      <div class="lt">Bloom <span>✦</span></div>
+      <div class="ls">Wellness · Khushi</div>
+    </div>
+    <div class="nav-i active" data-s="dashboard"><span class="nav-e">🌸</span><span>Dashboard</span></div>
+    <div class="nav-i" data-s="planner"><span class="nav-e">📅</span><span>Meal Planner</span></div>
+    <div class="nav-i" data-s="library"><span class="nav-e">📚</span><span>Food Library</span></div>
+    <div class="nav-i" data-s="workouts"><span class="nav-e">💪</span><span>Workouts</span></div>
+    <div class="nav-i" data-s="progress"><span class="nav-e">📈</span><span>Progress</span></div>
+    <div class="nav-i" data-s="bloodwork"><span class="nav-e">🩸</span><span>Bloodwork</span></div>
+    <div class="sb-foot">Bloom v1 · May 2026</div>
+  </nav>
+
+  <!-- MAIN CONTENT (sections injected by Parts 2–5) -->
+  <main class="main" id="mainContent">
+
+    <!-- DASHBOARD -->
+    <div class="section active" id="sec-dashboard">
+      <div class="greeting">
+        <h1 id="gtxt">Good morning, Khushi ✦</h1>
+        <p id="gdate"></p>
+      </div>
+      <div class="stat-strip">
+        <div class="stat-c"><div class="stat-lbl">Current Weight</div><div class="stat-val" id="sw">—<span class="stat-u">kg</span></div></div>
+        <div class="stat-c"><div class="stat-lbl">To Target</div><div class="stat-val" id="sg">—<span class="stat-u">kg</span></div></div>
+        <div class="stat-c"><div class="stat-lbl">Day Streak</div><div class="stat-val" id="ss">—<span class="stat-u">days</span></div></div>
+        <div class="stat-c"><div class="stat-lbl">Workouts</div><div class="stat-val" id="swo">—<span class="stat-u">wk</span></div></div>
+      </div>
+      <div class="g2 mb2">
+        <!-- CHECK-IN -->
+        <div class="card">
+          <div class="card-title">Daily Check-in ✍️</div>
+          <div class="ci-g">
+            <div class="fg" style="margin-bottom:0"><label>Weight (kg)</label><input type="number" id="ciW" placeholder="89.0" step="0.1" min="40" max="200"></div>
+            <div class="fg" style="margin-bottom:0"><label>Sleep (hrs)</label><input type="number" id="ciS" placeholder="7.5" step="0.5" min="0" max="24"></div>
+          </div>
+          <div class="fg mt1" style="margin-bottom:.75rem">
+            <label>Energy Level</label>
+            <div class="e-row">
+              <button class="e-btn" data-e="1" onclick="selE(1)">1</button>
+              <button class="e-btn" data-e="2" onclick="selE(2)">2</button>
+              <button class="e-btn" data-e="3" onclick="selE(3)">3</button>
+              <button class="e-btn" data-e="4" onclick="selE(4)">4</button>
+              <button class="e-btn" data-e="5" onclick="selE(5)">5</button>
+            </div>
+          </div>
+          <div class="fg" style="margin-bottom:.75rem">
+            <label>Mood</label>
+            <div class="mood-row">
+              <button class="mood-btn" data-m="1" onclick="selM(1)" title="Exhausted">😫</button>
+              <button class="mood-btn" data-m="2" onclick="selM(2)" title="Low">😔</button>
+              <button class="mood-btn" data-m="3" onclick="selM(3)" title="Neutral">😐</button>
+              <button class="mood-btn" data-m="4" onclick="selM(4)" title="Good">🙂</button>
+              <button class="mood-btn" data-m="5" onclick="selM(5)" title="Great">😄</button>
+            </div>
+          </div>
+          <div class="fg" style="margin-bottom:1rem">
+            <label>Water Intake</label>
+            <div class="water-c">
+              <button class="w-btn" onclick="chgW(-1)">−</button>
+              <div class="w-disp" id="wDisp">0</div>
+              <span class="tm ts">glasses</span>
+              <button class="w-btn" onclick="chgW(1)">+</button>
+            </div>
+          </div>
+          <button class="btn btn-p" style="width:100%" onclick="saveCI()">Save Check-in</button>
+        </div>
+        <!-- PREVIEWS -->
+        <div>
+          <div class="prev-c mb1" onclick="navTo('planner')">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+              <div class="card-title" style="margin:0">Today's Meals 🥗</div>
+              <span class="tm ts">→ Planner</span>
+            </div>
+            <div id="tdMeals">
+              <div class="mp-slot"><span class="tm">Breakfast</span><span>—</span></div>
+              <div class="mp-slot"><span class="tm">Lunch</span><span>—</span></div>
+              <div class="mp-slot"><span class="tm">Snack</span><span>—</span></div>
+              <div class="mp-slot"><span class="tm">Dinner</span><span>—</span></div>
+            </div>
+          </div>
+          <div class="prev-c" onclick="navTo('workouts')">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+              <div class="card-title" style="margin:0">Today's Workout 💪</div>
+              <span class="tm ts">→ Workouts</span>
+            </div>
+            <div id="tdWkt"><div class="tm ts">Loading...</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PLANNER -->
+    <div class="section" id="sec-planner">
+      <div class="s-title">Meal Planner</div>
+      <div class="s-sub">Plan your week. Meals are relative to your wake time — Meal 1/2/3/4.</div>
+      <div class="week-nav">
+        <button class="btn btn-s btn-sm" onclick="chgWk(-1)">← Prev</button>
+        <div class="week-lbl" id="wkLbl">—</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-g btn-sm" onclick="goToday()">Today</button>
+          <button class="btn btn-s btn-sm" onclick="chgWk(1)">Next →</button>
+        </div>
+      </div>
+      <div class="week-grid" id="wkGrid"></div>
+    </div>
+
+    <!-- LIBRARY -->
+    <div class="section" id="sec-library">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.5rem">
+        <div>
+          <div class="s-title">Food Library</div>
+          <div class="s-sub">Your personal meal database — all veg, no eggs, no paneer.</div>
+        </div>
+        <button class="btn btn-p" onclick="openAddMeal()">+ Add Meal</button>
+      </div>
+      <div class="kb-bar">
+        <div class="si-wrap" style="flex:1;max-width:280px">
+          <input type="text" id="libSrch" placeholder="Search meals..." oninput="renderLib()">
+        </div>
+        <select id="libCuis" onchange="renderLib()">
+          <option value="">All Cuisines</option>
+          <option>Indian</option><option>South Indian</option><option>Thai</option>
+          <option>Chinese</option><option>Japanese</option><option>Italian</option>
+          <option>Mexican</option><option>Other</option>
+        </select>
+      </div>
+      <div class="kb-board">
+        <div class="kb-col"><div class="kb-col-h">🌅 Breakfast</div><div id="col-breakfast"></div></div>
+        <div class="kb-col"><div class="kb-col-h">☀️ Lunch</div><div id="col-lunch"></div></div>
+        <div class="kb-col"><div class="kb-col-h">🫐 Snack</div><div id="col-snack"></div></div>
+        <div class="kb-col"><div class="kb-col-h">🌙 Dinner</div><div id="col-dinner"></div></div>
+      </div>
+    </div>
+
+    <!-- WORKOUTS -->
+    <div class="section" id="sec-workouts">
+      <div class="s-title">Workouts 💪</div>
+      <div class="s-sub">Knee-safe · Home · Mat + Dumbbells · No deep squats, no jumping, no forward lunges.</div>
+      <!-- Phase Selector -->
+      <div class="phase-sel mb2" id="phaseSel">
+        <button class="phase-sel-btn" id="pbtn1" onclick="selectPhase(1)">
+          <span class="phase-num">Phase 1</span>
+          <span class="phase-desc">Weeks 1–8 · 25 min · 2×/week · Days A+B</span>
+        </button>
+        <button class="phase-sel-btn" id="pbtn2" onclick="selectPhase(2)">
+          <span class="phase-num">Phase 2</span>
+          <span class="phase-desc">Weeks 9–16 · 35 min · 3×/week · Days A+B+C</span>
+        </button>
+        <button class="phase-sel-btn" id="pbtn3" onclick="selectPhase(3)">
+          <span class="phase-num">Phase 3</span>
+          <span class="phase-desc">Weeks 17+ · 45 min · 3×/week · Days A+B+C</span>
+        </button>
+      </div>
+      <div class="phase-badge" id="phaseBdg" style="margin-bottom:.75rem"></div>
+      <div class="note-box">⚠️ All sessions are knee and ankle safe. No deep squats, no jumping, no forward lunges — never push through pain.</div>
+      <div class="g2">
+        <div>
+          <div class="sess-nav">
+            <button class="btn btn-s btn-sm" onclick="chgSess(-1)">← Prev</button>
+            <div class="sess-lbl" id="sessLbl">Day A</div>
+            <button class="btn btn-s btn-sm" onclick="chgSess(1)">Next →</button>
+          </div>
+          <div class="card mb1" style="padding:.9rem">
+            <div style="font-size:.75rem;color:var(--muted);margin-bottom:4px;font-weight:700">🔥 Warm-up (5 min)</div>
+            <div id="warmupTxt" style="font-size:.83rem;line-height:1.6;color:var(--text)"></div>
+          </div>
+          <div id="exList"></div>
+          <div class="card" style="padding:.9rem">
+            <div style="font-size:.75rem;color:var(--muted);margin-bottom:4px;font-weight:700">🧘 Cool-down (5 min)</div>
+            <div id="cooldownTxt" style="font-size:.83rem;line-height:1.6;color:var(--text)"></div>
+          </div>
+          <div class="card eff-row" style="margin-top:.75rem;padding:.9rem">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <span style="font-size:.82rem;font-weight:700">Session Effort Rating</span>
+              <span class="eff-val" id="effV">5</span>
+            </div>
+            <input type="range" id="effR" min="1" max="10" value="5" oninput="document.getElementById('effV').textContent=this.value">
+          </div>
+          <button class="full-btn" onclick="markWktDone()">✓ Mark Session Complete</button>
+        </div>
+        <div>
+          <div class="card mb1">
+            <div class="card-title">Recent Sessions 📋</div>
+            <div id="recentWkt"><div class="tm ts">No sessions logged yet.</div></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Log Custom Activity ✏️</div>
+            <p class="tm ts" style="margin-bottom:.75rem">Did a walk, yoga, swim, or anything else? Log it here.</p>
+            <div class="fg">
+              <label>Activity Type</label>
+              <select id="caType">
+                <option value="walk">🚶 Walk</option>
+                <option value="run">🏃 Run / Jog</option>
+                <option value="yoga">🧘 Yoga</option>
+                <option value="swim">🏊 Swimming</option>
+                <option value="cycle">🚴 Cycling</option>
+                <option value="dance">💃 Dance</option>
+                <option value="stretch">🤸 Stretching</option>
+                <option value="other">⚡ Other</option>
+              </select>
+            </div>
+            <div class="fg">
+              <label>Activity Name / Notes</label>
+              <input type="text" id="caName" placeholder="e.g. 30-min evening walk, Surya Namaskar x12...">
+            </div>
+            <div class="g2">
+              <div class="fg"><label>Duration (min)</label><input type="number" id="caDur" placeholder="30" min="1" max="300"></div>
+              <div class="fg"><label>Intensity (1–5)</label>
+                <select id="caIntensity">
+                  <option value="1">1 — Very light</option>
+                  <option value="2">2 — Light</option>
+                  <option value="3" selected>3 — Moderate</option>
+                  <option value="4">4 — Hard</option>
+                  <option value="5">5 — Very hard</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-m" style="width:100%" onclick="saveCustomActivity()">Save Activity</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PROGRESS -->
+    <div class="section" id="sec-progress">
+      <div class="s-title">Progress</div>
+      <div class="s-sub">Start: 89 kg · Target: 65 kg · ~0.5 kg/week over 12 months.</div>
+      <div class="card mb2">
+        <div class="card-title">Weight Chart 📉</div>
+        <div class="chart-wrap"><canvas id="wChart"></canvas></div>
+      </div>
+      <div class="card mb2">
+        <div class="card-title">Activity Heatmap 🔥 <span style="font-family:'Plus Jakarta Sans';font-size:.75rem;font-weight:400;color:var(--muted)">(last 91 days)</span></div>
+        <div class="hm-grid" id="hmGrid"></div>
+        <div class="hm-leg">
+          <span><span class="lc" style="background:var(--border)"></span>No log</span>
+          <span><span class="lc" style="background:var(--blush)"></span>Check-in</span>
+          <span><span class="lc" style="background:var(--lavender)"></span>Full log</span>
+          <span><span class="lc" style="background:var(--mint)"></span>Full + Workout</span>
+        </div>
+      </div>
+      <div id="weekStatCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem"></div>
+    </div>
+
+    <!-- BLOODWORK -->
+    <div class="section" id="sec-bloodwork">
+      <div class="s-title">Bloodwork</div>
+      <div class="s-sub">Apollo Diagnostics · March 2026 · Results reviewed and contextualised for your health profile.</div>
+      <div id="bwCards"></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     MODALS
+═══════════════════════════════════════════ -->
+
+<!-- Add / Edit Meal -->
+<div class="mo" id="moForm">
+  <div class="modal">
+    <div class="m-hd">
+      <div class="m-title" id="mFormTitle">Add Meal</div>
+      <button class="m-x" onclick="closeMo('moForm')">✕</button>
+    </div>
+    <div class="m-body">
+      <input type="hidden" id="mfId">
+      <div class="g2">
+        <div class="fg"><label>Meal Name *</label><input type="text" id="mfName" placeholder="e.g. Chana Masala"></div>
+        <div class="fg"><label>Meal Type *</label>
+          <select id="mfType">
+            <option value="breakfast">Breakfast</option>
+            <option value="lunch">Lunch</option>
+            <option value="snack">Snack</option>
+            <option value="dinner">Dinner</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg"><label>Cuisine *</label>
+        <select id="mfCuis">
+          <option>Indian</option><option>South Indian</option><option>Thai</option>
+          <option>Chinese</option><option>Japanese</option><option>Italian</option>
+          <option>Mexican</option><option>Other</option>
+        </select>
+      </div>
+      <div class="g4">
+        <div class="fg"><label>Calories</label><input type="number" id="mfCal" placeholder="300" min="0"></div>
+        <div class="fg"><label>Protein (g)</label><input type="number" id="mfPro" placeholder="15" min="0"></div>
+        <div class="fg"><label>Carbs (g)</label><input type="number" id="mfCrb" placeholder="40" min="0"></div>
+        <div class="fg"><label>Fat (g)</label><input type="number" id="mfFat" placeholder="8" min="0"></div>
+      </div>
+      <div class="fg"><label>Recipe / Instructions</label><textarea id="mfRec" rows="5" placeholder="Step-by-step instructions..."></textarea></div>
+      <div class="fg"><label>Notes / Tips</label><input type="text" id="mfNts" placeholder="Substitutions, tips..."></div>
+      <div style="display:flex;gap:.75rem">
+        <button class="btn btn-p btn-lg" style="flex:1" onclick="saveMeal()">Save Meal</button>
+        <button class="btn btn-s" onclick="closeMo('moForm')">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Meal Detail -->
+<div class="mo" id="moDetail">
+  <div class="modal">
+    <div class="m-hd">
+      <div class="m-title" id="mdName">Meal Name</div>
+      <button class="m-x" onclick="closeMo('moDetail')">✕</button>
+    </div>
+    <div class="m-body">
+      <div style="display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap" id="mdChips"></div>
+      <div class="macro-g">
+        <div class="macro-b"><div class="macro-v" id="mdCal">—</div><div class="macro-l">kcal</div></div>
+        <div class="macro-b"><div class="macro-v" id="mdPro">—</div><div class="macro-l">Protein</div></div>
+        <div class="macro-b"><div class="macro-v" id="mdCrb">—</div><div class="macro-l">Carbs</div></div>
+        <div class="macro-b"><div class="macro-v" id="mdFat">—</div><div class="macro-l">Fat</div></div>
+      </div>
+      <div class="fg">
+        <label>Recipe</label>
+        <div id="mdRec" style="font-size:.85rem;line-height:1.85;white-space:pre-line;background:var(--bg);padding:1rem;border-radius:10px;"></div>
+      </div>
+      <div id="mdNts" class="note-box" style="display:none"></div>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+        <button class="btn btn-m" onclick="addTodayFromDetail()">+ Add to Today</button>
+        <button class="btn btn-s" onclick="editFromDetail()">Edit</button>
+        <button class="btn btn-d" onclick="delFromDetail()">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Meal Picker -->
+<div class="mo" id="moPicker">
+  <div class="modal">
+    <div class="m-hd">
+      <div class="m-title" id="pickerTitle">Choose a Meal</div>
+      <button class="m-x" onclick="closeMo('moPicker')">✕</button>
+    </div>
+    <div class="m-body">
+      <div class="p-search">
+        <div class="si-wrap" style="flex:1">
+          <input type="text" id="pickerSrch" placeholder="Search meals..." oninput="renderPicker()">
+        </div>
+        <button class="btn btn-bl" onclick="surpriseMe()">🎲 Surprise me</button>
+      </div>
+      <div class="p-list" id="pickerList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Exercise Picker Modal -->
+<div class="mo" id="moExPicker">
+  <div class="modal" style="max-width:480px">
+    <div class="m-hd">
+      <div class="m-title" id="exPickerTitle">Swap Exercise</div>
+      <button class="m-x" onclick="closeMo('moExPicker')">x</button>
+    </div>
+    <div class="m-body">
+      <p class="tm ts" style="margin-bottom:.75rem">Choose any replacement exercise from the full library:</p>
+      <div id="exPickerList" style="display:flex;flex-direction:column;gap:5px;max-height:360px;overflow-y:auto"></div>
+      <div style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)">
+        <button class="btn btn-g btn-sm" onclick="resetExercise()">Reset to original</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-c" id="toastC"></div>
+
+<!-- ═══════════════════════════════════════════
+     PART 1 — CORE JAVASCRIPT
+     Firebase init · PIN · Navigation · Utilities
+═══════════════════════════════════════════ -->
+
+
+<!-- CDN scripts: loaded here to guarantee availability before app JS -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script>
+// If gstatic failed, dynamically load from jsDelivr
+if (typeof firebase === 'undefined') {
+  ['https://cdn.jsdelivr.net/npm/firebase@8.10.1/firebase-app.min.js',
+   'https://cdn.jsdelivr.net/npm/firebase@8.10.1/firebase-database.min.js'
+  ].forEach(function(src){
+    var s = document.createElement('script'); s.src = src; s.async = false;
+    document.head.appendChild(s);
+  });
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+
+<script>
+
+
+/* ── FIREBASE ── */
+const firebaseConfig = {
+  apiKey: "AIzaSyDu5Slti7jEMYryMJfDNdwJu_7jn4xYuJg",
+  authDomain: "ksm-planner.firebaseapp.com",
+  databaseURL: "https://ksm-planner-default-rtdb.firebaseio.com",
+  projectId: "ksm-planner",
+  storageBucket: "ksm-planner.firebasestorage.app",
+  messagingSenderId: "271599532469",
+  appId: "1:271599532469:web:63b785535a5cb03d1bc1fc"
+};
+
+let db, R;
+
+function initFirebase() {
+  try {
+    if (typeof firebase === 'undefined') throw new Error('Firebase SDK not loaded');
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+    R  = p => db.ref('bloom/' + p);
+    return true;
+  } catch(e) {
+    console.error('Firebase init failed:', e.message);
+    // No-op chainable fallback — UI still renders, data just won't persist
+    const noop = () => {
+      const obj = {
+        once:        () => Promise.resolve({ val: () => null }),
+        update:      () => Promise.resolve(),
+        set:         () => Promise.resolve(),
+        remove:      () => Promise.resolve(),
+        orderByKey:  function(){ return this; },
+        limitToLast: function(){ return this; },
+        startAt:     function(){ return this; },
+        endAt:       function(){ return this; }
+      };
+      return obj;
+    };
+    R = noop;
+    return false;
+  }
+}
+
+/* ── DATE UTILS ── */
+const pad = n => String(n).padStart(2, '0');
+const dateStr = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const todayStr = () => dateStr(new Date());
+const MEAL_TYPES  = ['breakfast','lunch','snack','dinner'];
+const MEAL_LABELS = {breakfast:'Breakfast', lunch:'Lunch', snack:'Snack', dinner:'Dinner'};
+
+function getMondayOf(date) {
+  const d = new Date(date); d.setHours(0,0,0,0);
+  const day = d.getDay();
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  return d;
+}
+
+function cuisineClass(c) {
+  return 'ch-' + (c || '').toLowerCase().replace(/\s+/g, '-');
+}
+
+/* ── PIN ── */
+const CORRECT = '1110';
+let pinBuf = '';
+
+function pp(d) {
+  if (pinBuf.length >= 4) return;
+  pinBuf += d;
+  updDots();
+  if (pinBuf.length === 4) {
+    setTimeout(() => {
+      if (pinBuf === CORRECT) {
+        const ps = document.getElementById('pin-screen');
+        ps.style.transition = 'opacity .4s';
+        ps.style.opacity = '0';
+        setTimeout(() => {
+          ps.style.display = 'none';
+          document.getElementById('app').classList.add('visible');
+          initApp();
+        }, 400);
+      } else {
+        document.querySelectorAll('.pin-dot').forEach(el => el.classList.add('err'));
+        document.getElementById('pinErr').textContent = 'Incorrect PIN. Try again.';
+        setTimeout(() => {
+          pinBuf = '';
+          updDots();
+          document.querySelectorAll('.pin-dot').forEach(el => el.classList.remove('err'));
+          document.getElementById('pinErr').textContent = '';
+        }, 900);
+      }
+    }, 80);
+  }
+}
+
+function pb() {
+  pinBuf = pinBuf.slice(0, -1);
+  updDots();
+  document.getElementById('pinErr').textContent = '';
+}
+
+function updDots() {
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('pd'+i).classList.toggle('filled', i < pinBuf.length);
+  }
+}
+
+/* ── NAVIGATION ── */
+function navTo(s) {
+  document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-i').forEach(el => el.classList.remove('active'));
+  document.getElementById('sec-' + s).classList.add('active');
+  document.querySelector('[data-s="'+s+'"]').classList.add('active');
+  if (s === 'planner')   renderWeek();
+  if (s === 'library')   loadLib();
+  if (s === 'workouts')  renderWorkouts();
+  if (s === 'progress')  renderProgress();
+  if (s === 'bloodwork') renderBloodwork();
+}
+
+document.querySelectorAll('.nav-i').forEach(el => {
+  el.addEventListener('click', () => navTo(el.dataset.s));
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.mo.open').forEach(m => m.classList.remove('open'));
+});
+
+/* ── MODALS ── */
+function openMo(id)  { document.getElementById(id).classList.add('open'); }
+function closeMo(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.mo').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+});
+
+/* ── TOAST ── */
+function toast(msg, type = '') {
+  const c = document.getElementById('toastC');
+  const t = document.createElement('div');
+  t.className = 'toast' + (type ? ' '+type : '');
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => {
+    t.classList.add('out');
+    setTimeout(() => t.remove(), 320);
+  }, 2600);
+}
+
+
+
+/* ════════════════════════════════════════════════════════════════
+   PART 2 — DASHBOARD  +  MEAL PLANNER
+   Depends on: Firebase (R), dateStr, todayStr, MEAL_TYPES,
+               MEAL_LABELS, cuisineClass, openMo, closeMo, toast
+════════════════════════════════════════════════════════════════ */
+
+/* ────────────────────────────────────────────
+   DASHBOARD STATE
+──────────────────────────────────────────── */
+let ciMood = 0, ciEnergy = 0, ciWater = 0;
+
+/* ── GREETING ── */
+function initDashboard() {
+  const now  = new Date();
+  const h    = now.getHours();
+  const greet = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  document.getElementById('gtxt').textContent = `${greet}, Khushi ✦`;
+  document.getElementById('gdate').textContent = now.toLocaleDateString('en-IN', {
+    weekday:'long', day:'numeric', month:'long', year:'numeric'
+  });
+
+  /* Pre-fill today's check-in if already saved */
+  R('dailyLogs/' + todayStr()).once('value', snap => {
+    const d = snap.val() || {};
+    if (d.weight) document.getElementById('ciW').value = d.weight;
+    if (d.sleep)  document.getElementById('ciS').value = d.sleep;
+    if (d.energy) { ciEnergy = d.energy; selE(ciEnergy, false); }
+    if (d.mood)   { ciMood   = d.mood;   selM(ciMood,   false); }
+    if (d.water)  { ciWater  = d.water;  document.getElementById('wDisp').textContent = ciWater; }
+  });
+
+  loadStats();
+  loadTodayMealsPreview();
+  loadTodayWktPreview();
+}
+
+/* ── ENERGY ── */
+function selE(v) {
+  ciEnergy = v;
+  document.querySelectorAll('.e-btn').forEach(b => b.classList.toggle('sel', +b.dataset.e === v));
+}
+
+/* ── MOOD ── */
+function selM(v) {
+  ciMood = v;
+  document.querySelectorAll('.mood-btn').forEach(b => b.classList.toggle('sel', +b.dataset.m === v));
+}
+
+/* ── WATER ── */
+function chgW(delta) {
+  ciWater = Math.max(0, Math.min(20, ciWater + delta));
+  document.getElementById('wDisp').textContent = ciWater;
+}
+
+/* ── SAVE CHECK-IN ── */
+function saveCI() {
+  const weight = parseFloat(document.getElementById('ciW').value) || null;
+  const sleep  = parseFloat(document.getElementById('ciS').value) || null;
+  const data   = { ts: Date.now() };
+  if (weight)        data.weight  = weight;
+  if (sleep)         data.sleep   = sleep;
+  if (ciEnergy)      data.energy  = ciEnergy;
+  if (ciMood)        data.mood    = ciMood;
+  if (ciWater > 0)   data.water   = ciWater;
+
+  R('dailyLogs/' + todayStr()).update(data)
+    .then(() => { toast('Check-in saved! 🌸', 'ok'); loadStats(); })
+    .catch(() => toast('Save failed — check connection.', 'err'));
+}
+
+/* ── STATS STRIP ── */
+function loadStats() {
+  /* Weight, streak from last 30 logs */
+  R('dailyLogs').orderByKey().limitToLast(30).once('value', snap => {
+    const logs = snap.val() || {};
+    const keys = Object.keys(logs).sort();
+
+    /* Last logged weight */
+    let lastW = null;
+    for (let i = keys.length - 1; i >= 0; i--) {
+      if (logs[keys[i]].weight) { lastW = logs[keys[i]].weight; break; }
+    }
+    if (lastW !== null) {
+      document.getElementById('sw').innerHTML  = lastW + '<span class="stat-u">kg</span>';
+      document.getElementById('sg').innerHTML  = Math.max(0, (lastW - 65).toFixed(1)) + '<span class="stat-u">kg</span>';
+    }
+
+    /* Streak: consecutive logged days ending today */
+    let streak = 0;
+    const check = new Date();
+    while (true) {
+      if (logs[dateStr(check)]) { streak++; check.setDate(check.getDate() - 1); }
+      else break;
+    }
+    document.getElementById('ss').innerHTML = streak + '<span class="stat-u">days</span>';
+  });
+
+  /* Workouts this week */
+  const mon = getMondayOf(new Date());
+  const sun = new Date(mon); sun.setDate(sun.getDate() + 6);
+  R('workoutLogs').orderByKey().startAt(dateStr(mon)).endAt(dateStr(sun)).once('value', snap => {
+    const cnt = Object.keys(snap.val() || {}).length;
+    const { dpw } = getPhase();
+    document.getElementById('swo').innerHTML = cnt + '<span class="stat-u">/' + dpw + '</span>';
+  });
+}
+
+/* ── TODAY MEAL PREVIEW ── */
+function loadTodayMealsPreview() {
+  var td   = todayStr();
+  var dayI = ((new Date(td+'T00:00:00').getDay()) + 6) % 7;
+
+  // Render template immediately
+  function draw(plan, lib) {
+    plan = plan || {}; lib = lib || {};
+    var html = MEAL_TYPES.map(function(t) {
+      var pv   = plan[t];
+      var _td2 = getTemplateForDay(td); var tmpl = _td2 ? _td2[t] : null;
+      var eff  = (pv === 'none') ? null : (pv != null ? pv : tmpl);
+      var name = eff ? (typeof eff === 'object' ? eff.name : (lib[eff] ? lib[eff].name : '—')) : '—';
+      return '<div class="mp-slot"><span class="tm">' + MEAL_LABELS[t] + '</span>'
+           + '<span class="fw6" style="font-size:.82rem;text-align:right;max-width:55%">' + name + '</span></div>';
+    }).join('');
+    document.getElementById('tdMeals').innerHTML = html;
+  }
+
+  draw({}, {}); // instant render from template
+
+  // Then update with Firebase data
+  R('mealPlan/' + td).once('value', function(planSnap) {
+    var plan = planSnap.val() || {};
+    R('mealLibrary').once('value', function(libSnap) {
+      draw(plan, libSnap.val() || {});
+    });
+  });
+}
+
+/* ── TODAY WORKOUT PREVIEW ── */
+function loadTodayWktPreview() {
+  const { phase, dpw, duration } = getPhase();
+  const names = dpw >= 3 ? ['Day A','Day B','Day C'] : ['Day A','Day B'];
+  const cur   = names[curSessIdx % names.length];
+  document.getElementById('tdWkt').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div class="fw6" style="font-size:.88rem">${cur}</div>
+        <div class="tm ts">Phase ${phase} · ${duration} min · ${dpw}×/week</div>
+      </div>
+      <span class="chip ch-dinner" style="font-size:.7rem">→ Go</span>
+    </div>`;
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   MEAL PLANNER
+════════════════════════════════════════════════════════════════ */
+
+let weekOffset = 0;
+
+function chgWk(d) { weekOffset += d; renderWeek(); }
+function goToday() { weekOffset = 0; renderWeek(); }
+
+function getWeekDates() {
+  const base = getMondayOf(new Date());
+  base.setDate(base.getDate() + weekOffset * 7);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(base);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+}
+
+function renderWeek() {
+  const dates    = getWeekDates();
+  const dateStrs = dates.map(dateStr);
+  const td       = todayStr();
+  const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  document.getElementById('wkLbl').textContent =
+    dates[0].toLocaleDateString('en-IN',{day:'numeric',month:'short'}) + ' \u2013 ' +
+    dates[6].toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+
+  // PASS 1: render template immediately, no Firebase wait
+  _drawWeek(dates, dateStrs, td, dayNames, {}, {});
+
+  // PASS 2: load Firebase overrides and redraw (handles swaps, eaten, cleared slots)
+  var planPromises = dateStrs.map(function(ds){ return R('mealPlan/'+ds).once('value'); });
+  Promise.all(planPromises.concat([R('mealLibrary').once('value')])).then(function(snaps) {
+    var lib   = snaps[7].val() || {};
+    var plans = {};
+    dateStrs.forEach(function(ds, i){ plans[ds] = snaps[i].val() || {}; });
+    _drawWeek(dates, dateStrs, td, dayNames, plans, lib);
+  }).catch(function(){
+    // Firebase failed — template from Pass 1 stays visible, no crash
+  });
+}
+
+function _drawWeek(dates, dateStrs, td, dayNames, plans, lib) {
+  var grid = document.getElementById('wkGrid');
+  grid.innerHTML = dates.map(function(d, i) {
+    var ds      = dateStrs[i];
+    var plan    = plans[ds] || {};
+    var isToday = ds === td;
+    var slots = MEAL_TYPES.map(function(type) {
+      var raw     = plan[type];
+      var tmplDay = getTemplateForDay(ds);
+      var tmpl    = tmplDay ? tmplDay[type] : null;
+      var planVal = (raw === 'none') ? null : (raw != null ? raw : tmpl);
+      var meal    = null;
+      if (planVal) {
+        meal = (typeof planVal === 'object') ? planVal
+             : (lib[planVal] || SEEDS.find(function(s){ return s.id === planVal; }) || null);
+      }
+
+      if (meal) {
+        var eatenKey  = type + '_eaten';
+        var eatenDone = plan[eatenKey] ? 'done' : '';
+        var eatenTxt  = plan[eatenKey] ? '\u2713 Eaten' : '\u25cb Mark';
+        return '<div class="meal-slot">'
+          + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+          +   '<div class="sl-lbl" style="margin-bottom:0">' + MEAL_LABELS[type] + '</div>'
+          +   '<button onclick="clearSlot(\'' + ds + '\',\'' + type + '\')" title="Remove"'
+          +     ' style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:0 2px">&#x2715;</button>'
+          + '</div>'
+          + '<div class="sl-name">' + meal.name + '</div>'
+          + '<div class="sl-meta">'
+          +   '<span class="chip ' + cuisineClass(meal.cuisine) + '" style="font-size:.6rem;padding:2px 6px">' + meal.cuisine + '</span>'
+          +   '<span class="eat-tog ' + eatenDone + '" onclick="toggleEaten(\'' + ds + '\',\'' + type + '\',this)">' + eatenTxt + '</span>'
+          + '</div>'
+          + '<div style="font-size:.7rem;color:var(--muted);margin-top:3px">' + meal.calories + ' kcal \u00b7 ' + meal.protein + 'g pro</div>'
+          + '<div style="margin-top:5px">'
+          +   '<button class="btn btn-g btn-sm" style="padding:2px 7px;font-size:.65rem"'
+          +     ' onclick="openPicker(\'' + ds + '\',\'' + type + '\')">&#8596; Swap</button>'
+          + '</div>'
+          + '</div>';
+      } else {
+        return '<button class="add-slot" onclick="openPicker(\'' + ds + '\',\'' + type + '\')">'
+          + '<span style="font-size:1rem">+</span> ' + MEAL_LABELS[type]
+          + '</button>';
+      }
+    }).join('');
+
+    return '<div>'
+      + '<div class="day-hd' + (isToday ? ' today' : '') + '">'
+      +   '<div class="day-nm">' + dayNames[i] + '</div>'
+      +   '<div class="day-num">' + d.getDate() + '</div>'
+      + '</div>'
+      + slots
+      + '</div>';
+  }).join('');
+}
+
+
+
+/* ── EATEN TOGGLE ── */
+function toggleEaten(ds, type, el) {
+  const isDone = el.classList.contains('done');
+  R('mealPlan/'+ds).update({ [type+'_eaten']: !isDone }).then(() => {
+    el.classList.toggle('done', !isDone);
+    el.textContent = !isDone ? '✓ Eaten' : '○ Mark';
+    toast(!isDone ? 'Marked as eaten ✓' : 'Unmarked', !isDone ? 'ok' : '');
+  });
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   MEAL PICKER
+════════════════════════════════════════════════════════════════ */
+
+let pickerCB      = null;
+let pickerType    = null;
+
+function openPicker(ds, mealType) {
+  pickerType = mealType;
+  document.getElementById('pickerTitle').textContent = `Choose ${MEAL_LABELS[mealType]}`;
+  document.getElementById('pickerSrch').value = '';
+
+  pickerCB = function(mealId) {
+    // Save the full meal object so the same meal works across any slot/day
+    var fromSeeds = SEEDS.find(function(s){ return s.id === mealId; }) || null;
+    R('mealLibrary/' + mealId).once('value', function(snap) {
+      var data = snap.val() || fromSeeds || {id: mealId, name: mealId, cuisine:'Other', calories:0, protein:0};
+      R('mealPlan/'+ds).update({[mealType]: data}).then(function() {
+        closeMo('moPicker');
+        renderWeek();
+        if (ds === todayStr()) loadTodayMealsPreview();
+        toast('Meal planned!', 'ok');
+      });
+    });
+  };;
+
+  renderPicker();
+  openMo('moPicker');
+}
+
+function renderPicker() {
+  const q  = document.getElementById('pickerSrch').value.toLowerCase().trim();
+  R('mealLibrary').once('value', function(snap) {
+    var lib  = snap.val() || {};
+    var pool = Object.keys(lib).length > 0 ? Object.values(lib) : SEEDS;
+    var items = pool.filter(function(m) {
+      if (q && !m.name.toLowerCase().includes(q) && !m.cuisine.toLowerCase().includes(q)) return false;
+      return true;
+    });
+    /* Sort: matching type first */
+    items.sort((a,b) => {
+      if (a.type === pickerType && b.type !== pickerType) return -1;
+      if (b.type === pickerType && a.type !== pickerType) return  1;
+      return a.name.localeCompare(b.name);
+    });
+
+    if (!items.length) {
+      document.getElementById('pickerList').innerHTML = '<div class="tm ts" style="padding:1rem;text-align:center">No meals found.</div>';
+      return;
+    }
+
+    document.getElementById('pickerList').innerHTML = items.map(m => `
+      <div class="p-item" onclick="pickerSelect('${m.id}')">
+        <div>
+          <div class="fw6" style="font-size:.85rem">${m.name}</div>
+          <div style="display:flex;gap:6px;margin-top:3px;align-items:center">
+            <span class="chip ${cuisineClass(m.cuisine)}">${m.cuisine}</span>
+            <span class="tm ts">${m.calories} kcal · ${m.protein}g protein</span>
+          </div>
+        </div>
+        <span style="color:var(--muted)">→</span>
+      </div>`).join('');
+  });
+}
+
+function pickerSelect(id) { if (pickerCB) pickerCB(id); }
+
+function surpriseMe() {
+  R('mealLibrary').once('value', function(snap) {
+    var lib   = snap.val() || {};
+    var pool  = Object.keys(lib).length > 0 ? Object.values(lib) : SEEDS;
+    if (!pool.length) return;
+    var pick  = pool[Math.floor(Math.random() * pool.length)];
+    pickerSelect(pick.id);
+  });
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   PART 3 — FOOD LIBRARY (KANBAN)  +  SEED DATA
+   Depends on: Firebase (R), MEAL_TYPES, MEAL_LABELS, cuisineClass,
+               openMo, closeMo, toast, todayStr
+════════════════════════════════════════════════════════════════ */
+
+/* ────────────────────────────────────────────
+   STATE
+──────────────────────────────────────────── */
+let libCache       = {};
+let detailMealId   = null;
+
+/* ── LOAD LIBRARY ── */
+function loadLib() {
+  R('mealLibrary').once('value', snap => {
+    libCache = snap.val() || {};
+    renderLib();
+  });
+}
+
+/* ── RENDER KANBAN ── */
+function renderLib() {
+  const q     = (document.getElementById('libSrch')?.value || '').toLowerCase().trim();
+  const cuis  = document.getElementById('libCuis')?.value || '';
+
+  const filtered = Object.values(libCache).filter(m => {
+    if (q    && !m.name.toLowerCase().includes(q) && !m.cuisine.toLowerCase().includes(q)) return false;
+    if (cuis && m.cuisine !== cuis) return false;
+    return true;
+  });
+
+  MEAL_TYPES.forEach(type => {
+    const col   = document.getElementById('col-' + type);
+    if (!col) return;
+    const meals = filtered.filter(m => m.type === type);
+    if (!meals.length) {
+      col.innerHTML = `<div class="tm ts" style="padding:.5rem 0">No meals here.</div>`;
+      return;
+    }
+    col.innerHTML = meals.map(m => `
+      <div class="meal-c" onclick="openDetail('${m.id}')">
+        <div class="meal-c-name">${m.name}</div>
+        <span class="chip ${cuisineClass(m.cuisine)}">${m.cuisine}</span>
+        <div class="meal-c-meta">
+          <span>${m.calories} kcal</span>
+          <span>${m.protein}g protein</span>
+        </div>
+      </div>`).join('');
+  });
+}
+
+/* ── MEAL DETAIL ── */
+function openDetail(id) {
+  const m = libCache[id];
+  if (!m) return;
+  detailMealId = id;
+
+  document.getElementById('mdName').textContent = m.name;
+  document.getElementById('mdChips').innerHTML  =
+    `<span class="chip ch-${m.type}">${MEAL_LABELS[m.type]}</span>
+     <span class="chip ${cuisineClass(m.cuisine)}">${m.cuisine}</span>`;
+  document.getElementById('mdCal').textContent  = m.calories || '—';
+  document.getElementById('mdPro').textContent  = (m.protein  || '—') + 'g';
+  document.getElementById('mdCrb').textContent  = (m.carbs    || '—') + 'g';
+  document.getElementById('mdFat').textContent  = (m.fat      || '—') + 'g';
+  document.getElementById('mdRec').textContent  = m.recipe || 'No recipe added yet.';
+
+  const nEl = document.getElementById('mdNts');
+  if (m.notes) { nEl.style.display='block'; nEl.textContent = '💡 ' + m.notes; }
+  else           nEl.style.display = 'none';
+
+  openMo('moDetail');
+}
+
+function editFromDetail() {
+  closeMo('moDetail');
+  openAddMeal(detailMealId);
+}
+
+function delFromDetail() {
+  if (!confirm('Delete this meal from your library?')) return;
+  R('mealLibrary/' + detailMealId).remove().then(() => {
+    closeMo('moDetail');
+    delete libCache[detailMealId];
+    renderLib();
+    toast('Meal deleted.', '');
+  }).catch(() => toast('Delete failed.', 'err'));
+}
+
+function addTodayFromDetail() {
+  const m = libCache[detailMealId];
+  if (!m) return;
+  R('mealPlan/' + todayStr()).update({ [m.type]: detailMealId }).then(() => {
+    closeMo('moDetail');
+    toast('Added to today\'s plan! 📅', 'ok');
+    loadTodayMealsPreview();
+  });
+}
+
+/* ── ADD / EDIT FORM ── */
+function openAddMeal(editId = null) {
+  document.getElementById('mFormTitle').textContent = editId ? 'Edit Meal' : 'Add Meal';
+  document.getElementById('mfId').value = editId || '';
+
+  if (editId && libCache[editId]) {
+    const m = libCache[editId];
+    document.getElementById('mfName').value = m.name  || '';
+    document.getElementById('mfType').value = m.type  || 'breakfast';
+    document.getElementById('mfCuis').value = m.cuisine || 'Indian';
+    document.getElementById('mfCal').value  = m.calories || '';
+    document.getElementById('mfPro').value  = m.protein  || '';
+    document.getElementById('mfCrb').value  = m.carbs    || '';
+    document.getElementById('mfFat').value  = m.fat      || '';
+    document.getElementById('mfRec').value  = m.recipe   || '';
+    document.getElementById('mfNts').value  = m.notes    || '';
+  } else {
+    ['mfName','mfRec','mfNts'].forEach(id => document.getElementById(id).value = '');
+    ['mfCal','mfPro','mfCrb','mfFat'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('mfType').value = 'breakfast';
+    document.getElementById('mfCuis').value = 'Indian';
+  }
+  openMo('moForm');
+}
+
+function saveMeal() {
+  const name = document.getElementById('mfName').value.trim();
+  if (!name) { toast('Please enter a meal name.', 'err'); return; }
+
+  const editId = document.getElementById('mfId').value;
+  const id     = editId || 'meal_' + Date.now();
+  const meal   = {
+    id,
+    name,
+    type:     document.getElementById('mfType').value,
+    cuisine:  document.getElementById('mfCuis').value,
+    calories: parseInt(document.getElementById('mfCal').value) || 0,
+    protein:  parseInt(document.getElementById('mfPro').value) || 0,
+    carbs:    parseInt(document.getElementById('mfCrb').value) || 0,
+    fat:      parseInt(document.getElementById('mfFat').value) || 0,
+    recipe:   document.getElementById('mfRec').value.trim(),
+    notes:    document.getElementById('mfNts').value.trim(),
+  };
+
+  R('mealLibrary/' + id).set(meal).then(() => {
+    libCache[id] = meal;
+    closeMo('moForm');
+    renderLib();
+    toast(editId ? 'Meal updated! ✓' : 'Meal added! 🌸', 'ok');
+  }).catch(() => toast('Save failed — check connection.', 'err'));
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   SEED DATA — 50 MEALS
+   All vegetarian · No eggs · No paneer
+════════════════════════════════════════════════════════════════ */
+
+const SEEDS = [
+
+/* ── INDIAN BREAKFASTS ── */
+{id:'s001',name:'Moong Dal Chilla',type:'breakfast',cuisine:'Indian',calories:220,protein:14,carbs:28,fat:6,
+recipe:`1. Soak 1 cup split moong dal overnight or 6 hours. Drain and grind to a smooth batter with minimal water.
+2. Add finely chopped onion, green chilli, fresh ginger (1 inch), coriander leaves, salt, and cumin. Mix well.
+3. Heat a non-stick tawa on medium. Pour a ladle of batter and spread into a thin 20 cm circle.
+4. Drizzle a few drops of oil around the edges. Cook 2 min until golden and crisp, then flip.
+5. Cook the other side 1 min. Serve hot with green coriander chutney or tomato chutney.`,
+notes:'High-protein, low-GI breakfast. Ideal for PCOS blood sugar management. Prep batter the night before.'},
+
+{id:'s002',name:'Tofu Bhurji',type:'breakfast',cuisine:'Indian',calories:190,protein:13,carbs:8,fat:11,
+recipe:`1. Press 200g firm tofu between kitchen paper for 15 min. Crumble into small, scramble-like pieces.
+2. Heat 1 tsp oil in a non-stick pan. Add cumin seeds, then finely diced onion and sauté 3 min.
+3. Add green chilli, grated ginger, diced tomato. Cook until tomato breaks down, about 3 min.
+4. Add ¼ tsp turmeric, ½ tsp red chilli powder, salt. Stir for 1 min.
+5. Add crumbled tofu. Cook on medium for 5–7 min, stirring occasionally, until lightly golden.
+6. Finish with fresh coriander and a squeeze of lemon. Serve with whole wheat roti or toast.`,
+notes:'Egg-free scramble. Add spinach for extra iron. Nutritional yeast (1 tbsp) adds a cheesy depth.'},
+
+{id:'s003',name:'Methi Thepla',type:'breakfast',cuisine:'Indian',calories:210,protein:7,carbs:32,fat:7,
+recipe:`1. Combine 1 cup whole wheat flour, ½ cup finely chopped fresh methi (fenugreek) leaves, 1 tsp ajwain, ½ tsp red chilli powder, ¼ tsp turmeric, pinch of asafoetida, and salt.
+2. Add 2 tbsp low-fat yoghurt and enough water to make a smooth, slightly stiff dough. Rest 15 min.
+3. Divide into lemon-sized balls. Dust with flour and roll out into thin, even rounds (3mm thick).
+4. Cook on a hot tawa until small bubbles form. Flip, press gently with a spatula, and cook both sides until golden with minimal oil.
+5. Serve with green chutney and low-fat yoghurt, or pack for on-the-go meals.`,
+notes:'Iron-rich from methi. Store stacked with a cloth in between for up to 2 days. Great travel food.'},
+
+{id:'s004',name:'Oats Uttapam',type:'breakfast',cuisine:'Indian',calories:205,protein:9,carbs:30,fat:5,
+recipe:`1. Blend 1 cup rolled oats into a coarse powder. Mix with ¼ cup low-fat yoghurt, salt, and enough water to make a thick, pourable batter. Rest 20 min.
+2. Add finely chopped coriander and a pinch of cumin to the batter.
+3. Heat a non-stick pan on medium. Pour a ladle of batter and spread to medium thickness — thicker than a dosa.
+4. Immediately press diced onion, tomato, green chilli, and capsicum onto the wet surface.
+5. Cover and cook on low-medium for 3 min. Flip carefully and cook uncovered 2 min more.
+6. Serve with coconut chutney or sambar.`,
+notes:'High-fibre oats keep blood sugar stable. Excellent PCOS breakfast. Add grated carrot for extra nutrition.'},
+
+{id:'s005',name:'Sprouts Moong Toast',type:'breakfast',cuisine:'Indian',calories:230,protein:12,carbs:34,fat:5,
+recipe:`1. Sprout ½ cup whole moong over 24–36 hours until tails appear.
+2. Mix sprouts with diced tomato, onion, green chilli, chaat masala, lemon juice, and salt.
+3. Toast 2 slices of whole grain bread until crisp.
+4. Pile sprout mixture generously on toast.
+5. Drizzle with green chutney and a little tamarind chutney. Serve immediately.`,
+notes:'Sprouting boosts B vitamins, iron, and enzyme activity. Very filling, high in fibre and protein.'},
+
+/* ── SOUTH INDIAN BREAKFASTS ── */
+{id:'s006',name:'Idli with Sambar',type:'breakfast',cuisine:'South Indian',calories:255,protein:10,carbs:48,fat:4,
+recipe:`1. Steam idli batter (fermented 2:1 idli rice to urad dal ratio) in greased moulds for 12 min.
+2. For sambar: pressure cook ½ cup toor dal with turmeric until very soft.
+3. In a pot, heat oil, add mustard seeds, curry leaves, dry chilli. Add diced onion, tomato, drumstick or carrot.
+4. Add cooked dal, 1 tsp sambar powder, tamarind extract (1 tbsp), salt. Simmer 15 min until vegetables are soft.
+5. Serve 3 soft idli with a bowl of sambar and green coconut chutney.`,
+notes:'Classic gut-friendly, fermented breakfast. Fermentation boosts bioavailability of iron and B vitamins.'},
+
+{id:'s007',name:'Pesarattu',type:'breakfast',cuisine:'South Indian',calories:220,protein:13,carbs:30,fat:5,
+recipe:`1. Soak ½ cup whole green moong (with skin) overnight. Drain and grind with ½ tsp ginger, 1 green chilli, salt, and water into a slightly coarse batter.
+2. Add 1 tbsp finely chopped onion and coriander to the batter.
+3. Heat a dosa pan on medium-high. Pour a ladle and spread into a thin, 25 cm crepe.
+4. Drizzle oil around edges. Cook until the bottom is golden and crisp (no need to flip if thin enough).
+5. Serve immediately with ginger chutney or peanut chutney.`,
+notes:'No fermentation needed. Whole moong is iron and folate rich. Traditional Andhra recipe.'},
+
+{id:'s008',name:'Ragi Dosa',type:'breakfast',cuisine:'South Indian',calories:195,protein:7,carbs:35,fat:4,
+recipe:`1. Mix 1 cup ragi (finger millet) flour with ¼ cup rice flour, ½ cup prepared dosa batter or yoghurt, salt, chopped coriander, grated ginger, and green chilli. Thin with water to dosa batter consistency.
+2. Rest 30 min. Heat a cast-iron dosa pan on high, reduce to medium when ready.
+3. Pour a ladle of batter in the centre and spread outward in a circular motion into a thin crepe.
+4. Drizzle oil around the edges. Cook until the surface looks dry and edges turn crisp (about 2–3 min).
+5. Flip briefly for 30 seconds. Serve with coconut chutney and sambar.`,
+notes:'Ragi is exceptionally high in calcium and has a very low glycaemic index. Excellent for PCOS.'},
+
+/* ── INDIAN LUNCH / DINNER ── */
+{id:'s009',name:'Chana Masala',type:'lunch',cuisine:'Indian',calories:310,protein:14,carbs:45,fat:8,
+recipe:`1. Heat oil, add bay leaf, green cardamom, cloves, black peppercorns. Add finely diced onion and cook on medium 10 min until deep golden-brown.
+2. Add ginger-garlic paste, cook 2 min. Add 2 pureed tomatoes, cook until oil separates.
+3. Add 1½ tsp coriander powder, 1 tsp cumin powder, 1 tsp chana masala, ½ tsp red chilli powder, ¼ tsp turmeric, salt. Cook spices 3 min.
+4. Add 2 cups boiled chickpeas with ½ cup reserved cooking water. Simmer 15 min.
+5. Finish with dried mango powder (amchur), a pinch of garam masala, and fresh coriander. Serve with jeera rice or roti.`,
+notes:'Protein and fibre powerhouse. Use canned chickpeas to save 1 hour. Tastes better the next day.'},
+
+{id:'s010',name:'Rajma',type:'dinner',cuisine:'Indian',calories:320,protein:16,carbs:50,fat:7,
+recipe:`1. Soak 1 cup kidney beans overnight. Pressure cook until very tender (4 whistles). Reserve cooking water.
+2. Blend 1 large onion, fry in oil until very dark brown (12 min on medium). Add pureed tomatoes, ginger-garlic paste.
+3. Cook on medium until oil separates at the edges. Add coriander, cumin, kashmiri chilli, garam masala, salt. Cook 3 min.
+4. Add cooked rajma with 1 cup of cooking water. Simmer 20 min. Mash a handful of beans against the pot to thicken.
+5. Finish with kasoori methi and coriander. Serve over jeera rice.`,
+notes:'High in soluble fibre — excellent for cholesterol and blood sugar. Freezes beautifully.'},
+
+{id:'s011',name:'Dal Khichdi',type:'dinner',cuisine:'Indian',calories:340,protein:13,carbs:58,fat:7,
+recipe:`1. Rinse ½ cup rice and ½ cup yellow moong dal together twice. Pressure cook with 3 cups water, salt, turmeric, and a bay leaf — 2 whistles. Allow pressure to release.
+2. Heat 1 tsp ghee in a small pan. Add cumin seeds, asafoetida, diced onion — sauté until golden.
+3. Add grated ginger, green chilli, diced tomato. Cook 3 min. Add ½ tsp red chilli powder and cumin powder.
+4. Pour tadka into the khichdi and mix well. Add hot water to achieve a soft porridge consistency.
+5. Serve with low-fat yoghurt, papad, and pickle.`,
+notes:'Gut-healing, easy to digest. Add seasonal vegetables to the pressure cooker for extra nutrition.'},
+
+{id:'s012',name:'Soya Chunk Curry',type:'lunch',cuisine:'Indian',calories:285,protein:22,carbs:20,fat:9,
+recipe:`1. Boil 1 cup mini soya chunks in salted water with turmeric for 10 min. Drain, cool, and squeeze out all moisture.
+2. Heat oil, fry whole spices (bay leaf, cardamom). Add finely diced onion and cook 8 min until golden-brown.
+3. Add ginger-garlic paste, cook 2 min. Add blended tomatoes and cook until oil separates.
+4. Add ground coriander, cumin, chilli powder, garam masala, salt. Cook 3 min.
+5. Add soya chunks and ½ cup water. Simmer 15 min until chunks absorb the gravy.
+6. Finish with kasoori methi and fresh coriander. Serve with roti or rice.`,
+notes:'Highest plant protein per serving in the library. Essential for PCOS. Squeeze chunks well to remove raw flavour.'},
+
+{id:'s013',name:'Palak Tofu',type:'dinner',cuisine:'Indian',calories:245,protein:16,carbs:14,fat:12,
+recipe:`1. Blanch 3 cups fresh spinach in boiling water for 1 min. Drain immediately and blend into a smooth bright green puree.
+2. Pan-fry 200g cubed firm tofu in 1 tsp oil until golden on all sides, about 5 min. Set aside.
+3. In the same pan, heat ½ tsp oil. Add cumin seeds, diced onion, ginger-garlic paste. Sauté 5 min.
+4. Add diced tomato, cook 3 min. Add garam masala, coriander powder, salt.
+5. Add spinach puree and ½ cup water. Simmer 8 min. Stir in tofu. Simmer 5 more min.
+6. Optional: add 1 tbsp cashew paste for creaminess. Serve with roti or rice.`,
+notes:'Iron + protein combination. The Vitamin C in tomatoes helps absorb iron from spinach.'},
+
+{id:'s014',name:'Dal Tadka',type:'lunch',cuisine:'Indian',calories:265,protein:14,carbs:38,fat:7,
+recipe:`1. Pressure cook ½ cup toor dal with 1.5 cups water, turmeric, and a tomato — 3 whistles. Mash lightly.
+2. Simmer dal with salt and adjust water to desired consistency (medium-thick).
+3. For tadka: heat 1 tsp ghee in a small pan until hot. Add cumin seeds — let them splutter.
+4. Add 2 thinly sliced garlic cloves, 1 dried red chilli. Fry 30 sec until garlic turns pale gold.
+5. Pour tadka over hot dal. Add a pinch of kashmiri chilli powder for colour.
+6. Garnish with fresh coriander. Serve with jeera rice or warm roti.`,
+notes:'Toor dal is high in folate. The ghee tadka is small — just enough for flavour, not excess fat.'},
+
+{id:'s015',name:'Masoor Dal',type:'dinner',cuisine:'Indian',calories:250,protein:13,carbs:40,fat:5,
+recipe:`1. Rinse 1 cup red lentils. Cook in 2 cups water with a pinch of turmeric — no pressure cooker needed. Simmer 20 min until very soft.
+2. In a separate pan, sauté diced onion in 1 tsp oil until golden. Add grated ginger, diced tomatoes. Cook 3 min.
+3. Add ground cumin, coriander, red chilli, and salt. Cook 2 min.
+4. Combine with lentils and simmer 10 min together.
+5. Final tadka: heat oil, add mustard seeds, dried red chilli, curry leaves. Pour over dal.
+6. Squeeze lemon at the table. Serve with steamed rice.`,
+notes:'Red lentils are the highest iron lentil variety. Very fast cooking — ready in 30 min from scratch.'},
+
+/* ── SOUTH INDIAN LUNCH/DINNER ── */
+{id:'s016',name:'Vegetable Kootu',type:'dinner',cuisine:'South Indian',calories:215,protein:8,carbs:28,fat:8,
+recipe:`1. Pressure cook ½ cup chana dal until just tender (not mushy). Set aside.
+2. Boil diced raw banana, yam, or any hard vegetable in salted water until soft.
+3. Grind: ½ cup fresh or frozen coconut, ½ tsp cumin, 4 peppercorns into a coarse paste with water.
+4. Combine cooked vegetables, dal, and coconut paste. Simmer together 5 min. Adjust salt.
+5. Tadka: heat coconut oil, add mustard seeds, curry leaves, 2 dried red chillies, and a pinch of urad dal. Pour over kootu.`,
+notes:'Traditional South Indian dry-ish curry. Coconut adds healthy MCT fats. Extremely nutritious.'},
+
+{id:'s017',name:'Sambar Rice',type:'lunch',cuisine:'South Indian',calories:320,protein:11,carbs:58,fat:5,
+recipe:`1. Cook 1 cup white or brown rice until soft. Keep warm.
+2. Pressure cook ½ cup toor dal until very soft with turmeric.
+3. In a pot, heat oil, add mustard seeds, asafoetida, curry leaves. Add onion shallots, tomato, drumstick.
+4. Add cooked dal, sambar powder (2 tsp), tamarind extract (2 tbsp), salt. Simmer 20 min.
+5. Mix sambar into rice until well combined — more sambar than rice for nutrition.
+6. Serve with a spoon of ghee, papad, and pickle.`,
+notes:'One-pot comfort meal. Add more vegetables (carrot, eggplant, radish) for fibre and micronutrients.'},
+
+/* ── THAI ── */
+{id:'s018',name:'Pad Thai Tofu',type:'lunch',cuisine:'Thai',calories:380,protein:18,carbs:52,fat:12,
+recipe:`1. Soak 200g flat rice noodles in warm water for 20 min until pliable. Drain.
+2. Press 200g firm tofu dry, cut into 2cm cubes, fry in 1 tsp oil until golden on all sides. Set aside.
+3. Sauce: mix 2 tbsp tamarind paste, 1 tbsp soy sauce, 1 tsp palm sugar, 1 tsp mushroom sauce.
+4. In a hot wok, stir-fry 2 minced garlic cloves in oil 30 sec. Add noodles and sauce. Toss vigorously for 2 min.
+5. Add tofu, a handful of bean sprouts, and sliced spring onion. Toss 1 min more.
+6. Plate and top with crushed roasted peanuts, fresh lime wedge, and chilli flakes.`,
+notes:'Tamarind is the key flavour — do not substitute with lemon. Wide flat rice noodles give the best texture.'},
+
+{id:'s019',name:'Thai Green Curry Tofu',type:'dinner',cuisine:'Thai',calories:350,protein:16,carbs:22,fat:20,
+recipe:`1. Heat 1 tsp coconut oil in a deep pan. Add 2 tsp Thai green curry paste, fry 1 min until fragrant.
+2. Pour in ½ can (200 ml) light coconut milk. Bring to a gentle simmer, stirring to combine with paste.
+3. Add sliced courgette, baby corn, and red capsicum. Cook 5 min until slightly tender.
+4. Add pressed cubed tofu (200g) and the remaining coconut milk. Simmer 8 min.
+5. Season with fish-free soy sauce, 1 tsp palm sugar, and fresh lime juice. Add fresh Thai basil leaves off heat.
+6. Serve over jasmine rice or cauliflower rice.`,
+notes:'Use light coconut milk to manage calories. Make sure green curry paste is vegan — check for shrimp paste.'},
+
+{id:'s020',name:'Tom Yum Soup',type:'snack',cuisine:'Thai',calories:145,protein:9,carbs:12,fat:5,
+recipe:`1. Bring 3 cups vegetable broth to a simmer. Add 2 bruised lemongrass stalks, 5 slices galangal, 4 torn kaffir lime leaves.
+2. Simmer 10 min to infuse fully. Remove large aromatics.
+3. Add sliced mushrooms (shiitake or oyster) and 150g cubed silken or firm tofu. Cook 5 min.
+4. Season with lime juice, soy sauce, 1 tsp Thai chilli paste (nam prik pao). Adjust for sourness and heat.
+5. Add a handful of cherry tomatoes halved and sliced spring onions. Taste and serve.`,
+notes:'Extremely low calorie but deeply satisfying. Galangal and lemongrass are potent anti-inflammatories.'},
+
+{id:'s021',name:'Thai Basil Tofu Rice',type:'dinner',cuisine:'Thai',calories:360,protein:16,carbs:52,fat:10,
+recipe:`1. Cook 1 cup jasmine rice according to packet. Set aside.
+2. Press 200g firm tofu dry. Cut into 2cm cubes. Pan-fry in 1 tsp oil until golden and crisp. Set aside.
+3. In a wok on high heat: fry 4 minced garlic cloves and 3 sliced bird's eye chillies in oil for 30 sec.
+4. Add 1 tbsp soy sauce, 1 tbsp vegan oyster-style sauce, ½ tsp sugar. Add tofu, toss well.
+5. Remove from heat. Add a large handful of fresh Thai basil leaves and toss — they will wilt in residual heat.
+6. Serve over rice. Garnish with fried shallots.`,
+notes:'Thai basil is essential here — Italian basil cannot replicate the flavour. Adjust chilli to your heat preference.'},
+
+/* ── CHINESE ── */
+{id:'s022',name:'Kung Pao Tofu',type:'dinner',cuisine:'Chinese',calories:325,protein:18,carbs:22,fat:18,
+recipe:`1. Press and cube 200g firm tofu. Fry in 1 tsp oil until golden on all sides. Set aside.
+2. Sauce: mix 2 tbsp soy sauce, 1 tbsp rice vinegar, 1 tsp dark soy sauce, 1 tsp sesame oil, 1 tsp sugar, 1 tsp cornflour, 1 tbsp chilli bean paste.
+3. In a hot wok: fry 6–8 dried red chillies and ½ tsp Sichuan peppercorns in 1 tbsp oil for 30 sec.
+4. Add 3 minced garlic cloves and 1 tsp grated ginger. Stir 20 sec.
+5. Add tofu and sauce. Toss vigorously on high heat for 2 min.
+6. Add ¼ cup roasted peanuts and diced capsicum. Toss 1 more min. Serve over steamed rice.`,
+notes:'Sichuan peppercorns give the numbing effect that makes this dish unique — do not skip.'},
+
+{id:'s023',name:'Chilli Garlic Tofu Noodles',type:'dinner',cuisine:'Chinese',calories:355,protein:16,carbs:48,fat:12,
+recipe:`1. Cook 100g wheat noodles according to packet. Drain and rinse under cold water.
+2. Sauce: whisk together 2 tbsp soy sauce, 1 tbsp chilli oil, 1 tsp sesame oil, 1 tsp rice vinegar, 1 tsp garlic paste, 1 tsp ginger paste, 1 tsp sugar.
+3. Pan-fry 150g cubed tofu until golden. Blanch bok choy in boiling water 1 min, drain.
+4. Toss warm noodles in sauce until well coated.
+5. Top with tofu and bok choy. Finish with sesame seeds, chilli flakes, and sliced spring onions.`,
+notes:'The chilli oil makes the dish — use a good Sichuan-style one. Works with glass, rice, or wheat noodles.'},
+
+{id:'s024',name:'Glass Noodle Stir-fry',type:'lunch',cuisine:'Chinese',calories:295,protein:10,carbs:48,fat:7,
+recipe:`1. Soak 100g glass noodles (mung bean vermicelli) in hot water 8 min until soft. Drain and snip shorter with scissors.
+2. Julienne 1 carrot, 1 capsicum, ¼ small cabbage, and 3 spring onions.
+3. Heat wok on high with 1 tsp oil. Stir-fry all vegetables with 3 minced garlic cloves for 3 min.
+4. Add noodles, 2 tbsp soy sauce, 1 tsp sesame oil, 1 tsp rice vinegar. Toss continuously for 2 min.
+5. Add 100g edamame or crumbled tofu. Toss 1 more min.
+6. Serve topped with sesame seeds.`,
+notes:'Glass noodles are naturally gluten-free and have a lower GI than wheat noodles. Very light, very nutritious.'},
+
+{id:'s025',name:'Hakka Noodles Tofu',type:'dinner',cuisine:'Chinese',calories:375,protein:16,carbs:55,fat:10,
+recipe:`1. Boil 100g Hakka noodles until just tender (slightly al dente). Drain, rinse with cold water, and toss with 1 tsp oil.
+2. Julienne 1 carrot, 1 capsicum, ½ cabbage. Slice 3 spring onions. Cube and fry 150g tofu until golden.
+3. Heat a wok on very high heat (this is key). Fry garlic, then add all vegetables. Stir-fry 3 min with constant tossing.
+4. Add noodles and tofu. Season with soy sauce, green chilli sauce, rice vinegar, salt, and white pepper.
+5. Toss everything on high flame. The char at the edges is what you want. Serve immediately.`,
+notes:'The high flame creates restaurant-style "wok hei" (breath of the wok). Do not crowd the pan.'},
+
+{id:'s026',name:'Steamed Dumplings (Tofu-Veg)',type:'snack',cuisine:'Chinese',calories:195,protein:11,carbs:28,fat:5,
+recipe:`1. Filling: mix 150g crumbled firm tofu, 1 cup finely chopped cabbage (squeezed very dry), 1 tbsp soy sauce, 1 tsp sesame oil, 1 tsp grated ginger, 1 sliced spring onion, 1 tbsp cornflour.
+2. Place 1 heaped teaspoon filling in centre of each dumpling wrapper. Moisten edges with water, fold and pleat to seal.
+3. Line a bamboo steamer with baking paper. Place dumplings without touching.
+4. Steam over boiling water for 10–12 min until wrappers are translucent.
+5. Dipping sauce: soy sauce + rice vinegar + chilli oil + sesame oil + julienned ginger.`,
+notes:'Make a large batch, freeze unsteamed. Cook straight from frozen at 15 min. Great meal-prep snack.'},
+
+{id:'s027',name:'Tofu Fried Rice',type:'lunch',cuisine:'Chinese',calories:365,protein:14,carbs:56,fat:10,
+recipe:`1. Use cold, day-old rice — this is essential. Fresh rice makes the dish clumpy.
+2. Press 150g firm tofu dry. Crumble into small pieces and fry in oil until golden. Set aside.
+3. In a hot wok with 1 tsp oil, fry 1 cup frozen peas, corn, and diced carrot for 2 min.
+4. Push vegetables to the side. Add rice in the empty space, pressing flat. Cook undisturbed 1 min for a light char.
+5. Add tofu, 2 tbsp soy sauce, 1 tsp sesame oil, white pepper. Toss everything together vigorously.
+6. Finish with sliced spring onion and a drizzle of chilli oil.`,
+notes:'Egg-free version uses extra tofu for protein. Cold rice is non-negotiable for the right texture.'},
+
+/* ── JAPANESE ── */
+{id:'s028',name:'Miso Edamame Bowl',type:'lunch',cuisine:'Japanese',calories:295,protein:18,carbs:38,fat:9,
+recipe:`1. Cook 1 cup Japanese short-grain or brown rice according to packet. Fluff with a fork.
+2. Miso soup: dissolve 1 tbsp white shiro miso in 2 tbsp warm (not boiling) water. Stir into 400 ml hot water. Add cubed silken tofu and dried wakame (rehydrated 5 min).
+3. Boil ½ cup shelled edamame in salted water 3 min. Drain.
+4. Arrange rice in a bowl. Add edamame, thinly sliced cucumber, and pickled ginger alongside.
+5. Pour miso soup in a small bowl. Top rice bowl with sesame seeds and nori strips. Drizzle with soy sauce.`,
+notes:'Fermented miso is probiotic — never boil it after adding, as this kills the beneficial bacteria.'},
+
+{id:'s029',name:'Tofu Donburi',type:'dinner',cuisine:'Japanese',calories:385,protein:20,carbs:52,fat:10,
+recipe:`1. Cook Japanese short-grain rice (1 cup). Keep warm.
+2. Press and slice 200g firm tofu into 1cm planks. Dust both sides lightly in cornflour.
+3. Pan-fry in 1 tsp oil until golden and crisp on each side (3 min per side). Set aside.
+4. Teriyaki sauce: simmer 3 tbsp soy sauce, 2 tbsp mirin, 1 tbsp rice wine, 1 tsp sugar, ½ tsp cornflour in a small pan until glossy and slightly thick.
+5. Place rice in a deep bowl. Lay tofu slices on top. Spoon sauce generously over tofu.
+6. Garnish with sesame seeds, sliced spring onion, and pickled red ginger (beni shoga).`,
+notes:'The cornflour crust keeps tofu crisp even after saucing. Mirin is essential for authentic flavour.'},
+
+{id:'s030',name:'Zaru Soba',type:'lunch',cuisine:'Japanese',calories:280,protein:12,carbs:52,fat:3,
+recipe:`1. Boil 100g 100% buckwheat soba noodles in unsalted water for exactly 4 min. Drain and rinse immediately under cold running water until completely chilled.
+2. Arrange noodles on a bamboo mat or plate in a small nest.
+3. Dipping sauce (mentsuyu): mix 3 tbsp soy sauce, 2 tbsp mirin, 1 tbsp kombu dashi stock. Serve chilled in a small cup.
+4. Condiments: ½ tsp wasabi paste, 2 tbsp sliced spring onion, 1 tsp grated fresh ginger.
+5. Dip cold noodles into sauce with condiments. Pair with a side of boiled edamame.`,
+notes:'Buckwheat is rich in rutin, quercetin, and magnesium — all beneficial for PCOS and inflammation.'},
+
+{id:'s031',name:'Edamame Miso Soup',type:'snack',cuisine:'Japanese',calories:80,protein:8,carbs:6,fat:3,
+recipe:`1. Bring 400 ml water to hot but below boiling (about 70°C — steam rising but no bubbles).
+2. Dissolve 1.5 tbsp white miso paste in 2 tbsp of the hot water first (prevents lumps). Stir into the pot.
+3. Add ½ cup shelled edamame and 100g cubed silken tofu.
+4. Add a pinch of dried wakame seaweed (rehydrates in 2 min).
+5. Warm gently 2 min — do not let it boil. Ladle into bowls and top with sliced spring onion.`,
+notes:'Never boil miso — the probiotics are heat-sensitive. A warming, gut-friendly snack.'},
+
+/* ── ITALIAN ── */
+{id:'s032',name:'Pasta Arrabbiata Tofu',type:'dinner',cuisine:'Italian',calories:390,protein:18,carbs:58,fat:11,
+recipe:`1. Cook 80g penne in salted water until al dente. Reserve ½ cup pasta water.
+2. Pan-fry 150g cubed firm tofu in 1 tsp olive oil until golden. Set aside.
+3. In the same pan, gently fry 4 thinly sliced garlic cloves in 2 tsp olive oil on low for 2 min.
+4. Add ½–1 tsp chilli flakes (adjust to heat preference). Cook 30 sec. Add 1 can crushed tomatoes.
+5. Simmer sauce 15 min on low, stirring occasionally. Season with salt and a pinch of sugar.
+6. Add pasta, tofu, and a splash of pasta water. Toss well. Finish with fresh basil and a drizzle of extra-virgin olive oil.`,
+notes:'"Arrabbiata" means angry — the chilli is the star. No cream, keeps it lean. Parmesan substitute: nutritional yeast.'},
+
+{id:'s033',name:'Pesto Pasta',type:'lunch',cuisine:'Italian',calories:420,protein:14,carbs:56,fat:17,
+recipe:`1. Cook 80g pasta (rigatoni, fusilli, or spaghetti) until al dente. Reserve ½ cup pasta water.
+2. Pesto: blend 2 packed cups fresh basil, 3 tbsp walnuts or pine nuts, 2 garlic cloves, 3 tbsp extra-virgin olive oil, salt. Add 2 tbsp nutritional yeast (replaces parmesan).
+3. Halve 8 cherry tomatoes.
+4. Drain hot pasta and immediately toss with pesto and 3–4 tbsp pasta water to loosen.
+5. Fold in cherry tomatoes. Serve topped with extra walnuts and a few basil leaves.`,
+notes:'Nutritional yeast adds umami and B vitamins. Use whole wheat pasta for better blood sugar response.'},
+
+{id:'s034',name:'Aglio e Olio Tofu',type:'dinner',cuisine:'Italian',calories:400,protein:18,carbs:52,fat:15,
+recipe:`1. Cook 80g spaghetti until al dente. Reserve ¾ cup pasta water before draining.
+2. Press and cube 150g firm tofu. Pan-fry until golden and crisp. Set aside.
+3. In a wide pan, heat 3 tsp quality extra-virgin olive oil on low. Add 6 thinly sliced garlic cloves and ½ tsp red chilli flakes. Cook slowly 5 min until garlic turns pale gold — never brown.
+4. Add ½ cup pasta water to the garlic oil — it will sizzle. Add drained pasta and toss vigorously to emulsify.
+5. Add tofu, a large handful of flat-leaf parsley, salt, and pepper. Toss and serve immediately.`,
+notes:'The emulsified pasta water + olive oil is the sauce. Simple, fast, and absolutely delicious.'},
+
+{id:'s035',name:'Minestrone Soup',type:'lunch',cuisine:'Italian',calories:205,protein:9,carbs:34,fat:5,
+recipe:`1. Sauté finely diced onion, 3 garlic cloves, 1 carrot, and 2 celery sticks in 1 tsp olive oil for 5 min.
+2. Add 1 diced courgette, 1 cup green beans (halved), 1 can diced tomatoes, and 1 litre vegetable stock.
+3. Add 1 tsp dried Italian herbs, salt, and black pepper. Bring to a boil, reduce and simmer 20 min.
+4. Add ½ cup cooked cannellini beans and 40g small pasta (ditalini). Cook 8 more min.
+5. Stir in a handful of fresh basil. Taste and adjust seasoning. Serve with crusty whole grain bread.`,
+notes:'Load with any seasonal vegetables. Very low calorie, very filling from the beans and pasta.'},
+
+/* ── MEXICAN ── */
+{id:'s036',name:'Black Bean Tacos',type:'dinner',cuisine:'Mexican',calories:360,protein:15,carbs:52,fat:10,
+recipe:`1. Warm 4 small corn tortillas directly on a gas flame or dry pan — 20 sec each side until pliable and lightly charred.
+2. Filling: heat 1 cup canned black beans with 1 tsp cumin, ½ tsp smoked paprika, garlic powder, salt, and lime juice. Mash lightly.
+3. Fresh tomato salsa: dice 2 tomatoes, ½ red onion, 1 green chilli, coriander, lime, salt.
+4. Toppings: shredded cabbage, sliced avocado, pickled jalapeño, fresh coriander.
+5. Assemble: spread beans on tortillas, layer toppings, squeeze lime over everything.`,
+notes:'Black beans are a PCOS superfood — high in soluble fibre and magnesium. Use corn tortillas for lower GI.'},
+
+{id:'s037',name:'Tofu Burrito Bowl',type:'lunch',cuisine:'Mexican',calories:425,protein:22,carbs:55,fat:14,
+recipe:`1. Marinate 200g cubed firm tofu in lime juice, 1 tsp cumin, 1 tsp smoked paprika, garlic powder, chilli flakes, 1 tsp oil, salt — 20 min. Bake at 200°C for 25 min or pan-fry until crisp.
+2. Cook rice. While warm, mix in chopped fresh coriander and lime juice (cilantro-lime rice).
+3. Warm 1 cup black beans with cumin, garlic, salt, and lime.
+4. Toppings: halved cherry tomatoes, sliced avocado, shredded romaine, roasted corn.
+5. Build the bowl: rice base → beans → tofu → toppings. Dress with salsa, lime, and a spoon of low-fat yoghurt.`,
+notes:'All components store separately for 3 days — ideal meal prep. Very high protein, very filling.'},
+
+{id:'s038',name:'Tofu Fajitas',type:'dinner',cuisine:'Mexican',calories:345,protein:19,carbs:38,fat:14,
+recipe:`1. Slice 200g firm tofu into strips. Marinate 20 min in lime juice, cumin, smoked paprika, garlic, chilli powder, oil, and salt.
+2. Slice 3 bell peppers (red, yellow, green) and 1 large red onion into long strips.
+3. In a cast-iron pan or heavy skillet on high heat, cook tofu strips until nicely charred at edges. Set aside.
+4. In the same pan, cook peppers and onion on high with just a little oil until they char and soften slightly.
+5. Warm flour tortillas. Assemble with tofu, peppers, guacamole, pico de gallo, and fresh coriander.`,
+notes:'The char at high heat is the key — do not crowd the pan or the vegetables will steam instead of char.'},
+
+/* ── SNACKS ── */
+{id:'s039',name:'Sprouts Chaat',type:'snack',cuisine:'Indian',calories:155,protein:10,carbs:22,fat:3,
+recipe:`1. Use 1 cup mixed sprouted beans (green moong, black chana, and/or moth beans). Use raw for maximum nutrition or briefly steam 2 min if preferred.
+2. Combine with finely diced tomato, red onion, cucumber, green chilli, and fresh coriander.
+3. Dress with 1 tsp chaat masala, ½ tsp roasted cumin powder, black salt, fresh lime juice, and a drizzle of tamarind chutney.
+4. Toss well and taste for seasoning. Serve immediately while the sprouts are still crunchy.
+5. Optional: top with fine sev for crunch (adds ~30 cal).`,
+notes:'Sprouting boosts folate, iron, and enzyme activity by 200–400%. Perfect PCOS snack.'},
+
+{id:'s040',name:'Sattu Drink (Savoury)',type:'snack',cuisine:'Indian',calories:130,protein:8,carbs:22,fat:2,
+recipe:`1. Add 3 tablespoons roasted chana sattu to a tall glass.
+2. Add a pinch of black salt, ¼ tsp roasted cumin powder, ½ tsp chaat masala, and juice of half a lemon.
+3. Pour in 300 ml cold water and stir vigorously until fully dissolved (or blend 30 sec for extra smoothness).
+4. Taste — add more lemon or salt as desired. Top up with a few ice cubes.
+5. For a sweeter version: omit salt and cumin, add a teaspoon of jaggery powder instead.`,
+notes:'Bihar\'s ancient protein drink. Very filling, high in complex carbs and protein. Ideal pre-workout snack.'},
+
+{id:'s041',name:'Roasted Chana',type:'snack',cuisine:'Indian',calories:120,protein:7,carbs:18,fat:2,
+recipe:`1. For home-roasted version: soak 1 cup chickpeas overnight. Drain and dry completely on a towel.
+2. Spread on a baking tray. Drizzle with ½ tsp oil, toss to coat.
+3. Roast at 200°C for 35–40 min, shaking the tray every 15 min, until very crisp and deep golden.
+4. While still warm, toss with chaat masala, black salt, red chilli powder, and lime juice.
+5. Cool completely before storing in an airtight jar — they crisp up further as they cool.`,
+notes:'High-satiety snack rich in fibre and protein. Use store-bought roasted chana for convenience.'},
+
+{id:'s042',name:'Makhana (Foxnuts)',type:'snack',cuisine:'Indian',calories:100,protein:4,carbs:18,fat:1,
+recipe:`1. Heat a wide dry pan on medium. Add 1 cup makhana in a single layer.
+2. Roast, stirring continuously, for 5–7 min until they puff slightly more, turn golden, and become crisp.
+3. Remove immediately from heat. Add 1 tsp ghee or coconut oil and toss quickly.
+4. Season with pink salt, ½ tsp cumin powder, ¼ tsp red chilli powder, and chaat masala.
+5. Cool completely before eating — they become crisper as they cool.`,
+notes:'Very low glycaemic index. High in magnesium — critical for PCOS insulin sensitivity. Low calorie, very satisfying.'},
+
+{id:'s043',name:'Chaas (Spiced Buttermilk)',type:'snack',cuisine:'Indian',calories:60,protein:3,carbs:6,fat:2,
+recipe:`1. Whisk ½ cup low-fat yoghurt in a tall glass until completely smooth with no lumps.
+2. Add 1 cup cold water and whisk again until frothy.
+3. Season with roasted cumin powder, dried mint, black salt, and a pinch of asafoetida.
+4. For digestive version: add ½ tsp freshly grated ginger and 3–4 curry leaves.
+5. Serve cold over ice in summer or at room temperature year-round.`,
+notes:'Post-lunch digestive drink. Very low calorie. Probiotic benefit. Excellent for PCOS gut health.'},
+
+{id:'s044',name:'Edamame (Salted)',type:'snack',cuisine:'Japanese',calories:120,protein:11,carbs:10,fat:5,
+recipe:`1. Bring a large pot of water to boil with 1 tsp salt.
+2. Add frozen edamame pods. Boil 3–4 min until bright green and just tender.
+3. Drain immediately. Sprinkle generously with flaky sea salt while still hot.
+4. Optional: toss with a few drops of sesame oil, sesame seeds, and chilli flakes.
+5. Eat by squeezing each pod so the beans pop into your mouth.`,
+notes:'One of the best plant-based snacks. High in complete protein, isoflavones, and folate.'},
+
+{id:'s045',name:'Dates and Walnuts',type:'snack',cuisine:'Other',calories:145,protein:3,carbs:24,fat:6,
+recipe:`1. Select 3 large Medjool dates. Slice each lengthwise and remove the pit.
+2. Press the date open slightly to create a pocket.
+3. Stuff each date with 2 walnut halves, pressing gently so they sit inside.
+4. Optional: dust with a tiny pinch of cinnamon or cardamom for warmth.
+5. Serve immediately or prepare ahead and store chilled for up to 2 days.`,
+notes:'Natural iron and B vitamins from dates. Omega-3 ALA from walnuts reduces inflammation. Satisfying sweet-fatty snack.'},
+
+{id:'s046',name:'Sweet Potato Chaat',type:'snack',cuisine:'Indian',calories:170,protein:3,carbs:36,fat:2,
+recipe:`1. Boil 1 medium sweet potato (about 200g) in salted water until just tender — knife should go in with slight resistance. Cool, peel, and cut into 2cm cubes.
+2. In a bowl, combine sweet potato with ¼ diced red onion, ¼ cucumber (cubed), and fresh coriander.
+3. Season generously with chaat masala, roasted cumin powder, black salt, red chilli powder, and lime juice.
+4. Add 1 tbsp tamarind chutney and 1 tbsp green coriander chutney. Toss gently.
+5. Serve immediately — do not dress in advance.`,
+notes:'Sweet potato is rich in beta-carotene and fibre. Anti-inflammatory. Moderate GI but very high nutrition density.'},
+
+{id:'s047',name:'Guacamole with Rice Crackers',type:'snack',cuisine:'Mexican',calories:195,protein:3,carbs:22,fat:11,
+recipe:`1. Halve and pit 1 ripe avocado. Scoop flesh into a bowl. Mash with a fork until chunky-smooth.
+2. Add juice of 1 lime, salt, 2 tbsp finely diced red onion, ½ green chilli (deseeded), 2 tbsp fresh coriander. Mix.
+3. Optional: fold in 1 small diced tomato (deseeded to avoid watering it down).
+4. Taste for salt, lime, and heat. Adjust.
+5. Serve with 8–10 plain rice crackers. To store: press cling film directly onto surface to slow browning.`,
+notes:'Avocado\'s monounsaturated fat actively raises HDL (good cholesterol). Use rice crackers over fried chips.'},
+
+{id:'s048',name:'Bruschetta',type:'snack',cuisine:'Italian',calories:165,protein:5,carbs:28,fat:5,
+recipe:`1. Slice a whole grain baguette or sourdough loaf into 2 cm rounds.
+2. Brush lightly with olive oil. Toast in an oven at 180°C for 8 min until golden and crisp throughout.
+3. While still warm, rub the cut face of a raw garlic clove firmly over each slice — the rough bread grates it.
+4. Topping: dice 3 ripe tomatoes. Toss with torn fresh basil, a drizzle of extra-virgin olive oil, salt, pepper, and a splash of balsamic vinegar if desired.
+5. Pile tomato mixture on toast. Serve within 5 min before the bread softens.`,
+notes:'Raw garlic rub is essential. Must use ripe, flavourful tomatoes. Do not dress in advance.'},
+
+/* ── EXTRA BREAKFAST ── */
+{id:'s049',name:'Tofu Scramble',type:'breakfast',cuisine:'Other',calories:195,protein:14,carbs:7,fat:12,
+recipe:`1. Press 200g firm tofu for 15 min. Crumble into bite-size pieces between your fingers.
+2. Heat 1 tsp olive oil in a non-stick pan. Add ¼ finely diced onion and 1 garlic clove. Sauté 3 min until soft.
+3. Add tofu. Sprinkle ¼ tsp turmeric (for colour), 2 tbsp nutritional yeast (for cheesy flavour), 1 tsp soy sauce, salt, and black pepper.
+4. Cook on medium 5–7 min, stirring occasionally, until lightly golden at the edges.
+5. Add a large handful of spinach at the end, stir until wilted (1 min). Serve on whole grain toast.`,
+notes:'Nutritional yeast adds B12, protein, and umami. The turmeric is both anti-inflammatory and gives a golden colour.'},
+
+{id:'s050',name:'Soya Keema',type:'dinner',cuisine:'Indian',calories:295,protein:24,carbs:18,fat:10,
+recipe:`1. Soak ¾ cup soya mince (granules) in hot salted water for 15 min. Drain and squeeze out all moisture firmly — do this twice.
+2. In a heavy pan, sauté finely diced onion in 1 tsp oil for 10 min until deep brown.
+3. Add ginger-garlic paste, cook 2 min. Add pureed tomatoes, cook until oil separates.
+4. Add spices: coriander powder, cumin, kashmiri chilli, garam masala, turmeric, salt. Cook 3 min.
+5. Add soya mince and ½ cup frozen peas. Cook on medium for 10–12 min, stirring regularly.
+6. Finish with kasoori methi and fresh coriander. Serve with roti or as stuffing for paratha.`,
+notes:'Highest protein meal in the entire library. Essential recovery meal post-workout. Soya is a complete plant protein.'},
+];
+
+/* ── SEED IF EMPTY ── */
+async function seedIfEmpty() {
+  const snap = await R('mealLibrary').once('value');
+  const alreadySeeded = snap.val() && Object.keys(snap.val()).length >= 10;
+
+  if (!alreadySeeded) {
+    const updates = {};
+    SEEDS.forEach(m => { updates['mealLibrary/' + m.id] = m; });
+    await db.ref('bloom').update(updates);
+    console.log('Library seeded with', SEEDS.length, 'meals.');
+    toast('Meal library ready — 50 recipes loaded! 🌸', 'ok');
+  }
+
+  // Seed this week's meal plan if empty
+  await seedWeekPlan();
+}
+
+async function seedWeekPlan() {
+  // Build Mon–Sun dates for current week
+  const base = getMondayOf(new Date());
+  const weekDates = Array.from({length:7}, (_,i) => {
+    const d = new Date(base); d.setDate(d.getDate()+i); return dateStr(d);
+  });
+
+  // Check if any day already has a plan
+  const firstSnap = await R('mealPlan/' + weekDates[0]).once('value');
+  if (firstSnap.val() && firstSnap.val().breakfast) return; // already planned
+
+  // Week plan: [breakfast, lunch, snack, dinner] using seed IDs
+  const weekMenu = [
+    ['s001','s009','s039','s012'],  // Mon
+    ['s006','s018','s040','s010'],  // Tue
+    ['s002','s022','s041','s013'],  // Wed
+    ['s007','s028','s044','s019'],  // Thu
+    ['s003','s037','s042','s011'],  // Fri
+    ['s008','s032','s043','s036'],  // Sat
+    ['s004','s014','s045','s029'],  // Sun
+  ];
+
+  const updates = {};
+  weekDates.forEach((ds, i) => {
+    const [b,l,s,d] = weekMenu[i];
+    updates['mealPlan/'+ds+'/breakfast'] = b;
+    updates['mealPlan/'+ds+'/lunch']     = l;
+    updates['mealPlan/'+ds+'/snack']     = s;
+    updates['mealPlan/'+ds+'/dinner']    = d;
+  });
+  await db.ref('bloom').update(updates);
+  console.log('Week meal plan seeded.');
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   PART 4 — WORKOUTS
+   Depends on: Firebase (R), dateStr, todayStr, toast
+════════════════════════════════════════════════════════════════ */
+
+/* ────────────────────────────────────────────
+   PHASE LOGIC
+──────────────────────────────────────────── */
+const WKT_START = new Date('2026-05-12');
+
+function getPhase() {
+  const diffDays = Math.floor((new Date() - WKT_START) / 86400000);
+  const week     = Math.floor(diffDays / 7) + 1;
+  if (week <=  8) return { phase:1, duration:25, dpw:2, label:'Phase 1 · Weeks 1–8 · 25 min · 2×/week' };
+  if (week <= 16) return { phase:2, duration:35, dpw:3, label:'Phase 2 · Weeks 9–16 · 35 min · 3×/week' };
+  return              { phase:3, duration:45, dpw:3, label:'Phase 3 · Weeks 17+ · 45 min · 3×/week' };
+}
+
+/* ────────────────────────────────────────────
+   SESSION DATA
+──────────────────────────────────────────── */
+const SESSIONS = {
+  A: {
+    name: 'Day A — Upper Body + Core',
+    warmup: 'Marching in place 2 min · Arm circles (forward and back, 10 each) · Shoulder rolls · Wrist circles · Light neck rotations · Thread-the-needle stretch.',
+    cooldown: 'Standing chest stretch (interlace hands behind back) · Doorframe pec opener · Seated neck stretch · Supine spinal twist (both sides) · Child\'s pose 1 min · 5 deep breaths.',
+    exercises: [
+      {
+        name: 'Dumbbell Shoulder Press', sets: '3 × 10',
+        nSets: 3, targetReps: '10',
+        instructions: [
+          'Sit upright on a chair or stand with feet shoulder-width apart. Hold one dumbbell in each hand at shoulder height, palms facing forward, elbows at 90°.',
+          'Press both dumbbells upward until arms are almost fully extended overhead — do not lock elbows completely.',
+          'Pause 1 second at the top. Lower slowly and with control back to starting position over 3 counts.',
+          'Keep your core braced and avoid arching your lower back. Rest 60 sec between sets.'
+        ],
+        yt1: 'dumbbell+shoulder+press+proper+form',
+        yt2: 'seated+shoulder+press+beginner+tutorial'
+      },
+      {
+        name: 'Bicep Curls', sets: '3 × 10',
+        nSets: 3, targetReps: '10',
+        instructions: [
+          'Stand with feet hip-width apart, a dumbbell in each hand, arms fully extended at sides, palms facing forward.',
+          'Keeping elbows pinned close to your sides, curl both dumbbells upward toward your shoulders in a smooth arc.',
+          'Squeeze the biceps hard at the top for 1 second.',
+          'Lower slowly over 3 counts back to full extension. Do not let momentum do the work. Rest 60 sec.'
+        ],
+        yt1: 'dumbbell+bicep+curl+form+technique',
+        yt2: 'bicep+curl+beginner+how+to'
+      },
+      {
+        name: 'Bent-over Rows', sets: '3 × 10',
+        nSets: 3, targetReps: '10',
+        instructions: [
+          'Stand with feet hip-width apart. Hinge forward at the hips until your torso is at 45°, back flat, knees softly bent. Hold dumbbells hanging straight down.',
+          'Row both dumbbells up toward your lower ribs, leading with your elbows and squeezing your shoulder blades together at the top.',
+          'Hold 1 sec at the top, feeling the mid-back engage.',
+          'Lower to full arm extension with control. Do not round your lower back at any point. Rest 90 sec.'
+        ],
+        yt1: 'dumbbell+bent+over+row+correct+form',
+        yt2: 'bent+over+row+tutorial+beginners'
+      },
+      {
+        name: 'Dead Bug', sets: '3 × 8 each side',
+        nSets: 3, targetReps: '8/side',
+        instructions: [
+          'Lie flat on your back. Extend both arms straight up toward the ceiling. Bend knees to 90° and lift them so shins are parallel to the floor.',
+          'Press your entire lower back flat into the mat and hold it there throughout — this is the core of the exercise.',
+          'Slowly lower your right arm behind your head while simultaneously extending your left leg forward, both hovering just above the floor.',
+          'Return to start position. Repeat on the opposite side (left arm + right leg). That is 1 rep each side. Control = everything here.'
+        ],
+        yt1: 'dead+bug+exercise+core+stability',
+        yt2: 'dead+bug+how+to+lower+back+safe'
+      },
+      {
+        name: 'Forearm Plank', sets: '3 × 20–45 sec hold',
+        nSets: 3, targetReps: '30 sec',
+        instructions: [
+          'Place forearms on the mat, elbows directly under shoulders, hands flat or clasped together.',
+          'Step feet back so your body forms a straight plank from head to heels. Lift hips to achieve this line — no sagging at the hips, no piking upward.',
+          'Engage your core, glutes, and quads simultaneously. Breathe steadily — do not hold your breath.',
+          'Hold for 20 sec if new, building toward 45 sec. Rest 60 sec between sets.'
+        ],
+        yt1: 'forearm+plank+proper+form+core',
+        yt2: 'plank+hold+tutorial+beginners'
+      }
+    ]
+  },
+
+  B: {
+    name: 'Day B — Lower Body + Ankle Rehab',
+    warmup: 'Ankle alphabet rotations — draw the alphabet slowly with each foot (2 min) · Hip circles (10 each direction) · Standing calf pumps · Forward and sideways leg swings (hold wall) · Slow marching.',
+    cooldown: 'Supine figure-4 glute stretch (hold 40 sec each side) · Lying glute stretch · Seated calf stretch using a towel around foot · Butterfly pose · Prone quad stretch (hold ankle to glute).',
+    exercises: [
+      {
+        name: 'Glute Bridges', sets: '3 × 15',
+        nSets: 3, targetReps: '15',
+        instructions: [
+          'Lie on your back with knees bent, feet flat on the mat hip-width apart, arms resting at sides.',
+          'Press firmly through your heels and squeeze your glutes hard to lift your hips off the mat until your body forms a straight diagonal line from shoulders to knees.',
+          'Hold at the top for 2 seconds, squeezing glutes maximally.',
+          'Lower your hips back to just above the floor (not fully touching) and immediately go into the next rep. Rest 60 sec.'
+        ],
+        yt1: 'glute+bridge+form+tutorial',
+        yt2: 'glute+bridge+exercise+how+to+beginners'
+      },
+      {
+        name: 'Clamshells', sets: '3 × 12 each side',
+        nSets: 3, targetReps: '12/side',
+        instructions: [
+          'Lie on your side with knees bent at 45°, hips stacked, feet together. Rest your head on your lower arm. Place your upper hand on your hip to prevent rolling back.',
+          'Keeping your feet together, rotate your top knee upward as far as you can without letting your pelvis tilt backward.',
+          'Pause 1 sec at the top, feeling the outer hip and glute engage.',
+          'Lower with control over 2 counts. Complete all 12 reps before switching sides. Add a light resistance band above knees for progression.'
+        ],
+        yt1: 'clamshell+exercise+glute+med+form',
+        yt2: 'clamshells+hip+abductor+tutorial'
+      },
+      {
+        name: 'Standing Calf Raises', sets: '3 × 20',
+        nSets: 3, targetReps: '20',
+        instructions: [
+          'Stand near a wall or sturdy chair. Rest fingertips lightly for balance — do not grip. Feet hip-width apart, toes facing forward.',
+          'Rise slowly onto the balls of both feet, lifting heels as high as possible.',
+          'Pause briefly at the very top.',
+          'Lower your heels down slowly over 3 counts — all the way to the floor and beyond if possible (slight heel drop off a step). The slow lowering phase is the ankle rehab benefit. Rest 45 sec.'
+        ],
+        yt1: 'standing+calf+raise+form+ankle',
+        yt2: 'calf+raise+ankle+rehab+strengthening'
+      },
+      {
+        name: 'Lateral Leg Raises', sets: '3 × 15 each side',
+        nSets: 3, targetReps: '15/side',
+        instructions: [
+          'Lie on your side in a straight line. Lower arm extended out under your head.',
+          'Keep your top leg completely straight, flex your foot (toes toward face), and raise it to about 45° from the floor.',
+          'Pause 1 sec at the top. Feel the outer hip and glute working.',
+          'Lower with control over 2 counts. Do not let the leg drop. Complete all reps before flipping. Add ankle weight for progression.'
+        ],
+        yt1: 'lateral+leg+raise+side+lying+form',
+        yt2: 'side+lying+leg+raise+hip+abduction+tutorial'
+      },
+      {
+        name: 'Shallow Sumo Squat', sets: '3 × 10',
+        nSets: 3, targetReps: '10',
+        instructions: [
+          'Stand with feet wider than shoulder-width, toes pointed out at 45°. Hold dumbbells at sides or clasped at chest.',
+          'Keep your back straight, chest lifted, and core braced. Bend your knees and push hips back — go to 60° maximum, not deeper. Stop before any knee discomfort.',
+          'Pause briefly at the lowest comfortable point.',
+          'Press through your heels to return to standing, squeezing inner thighs and glutes. Keep knees tracking over toes throughout — never let them cave inward.'
+        ],
+        yt1: 'shallow+sumo+squat+knee+safe+form',
+        yt2: 'plie+squat+beginner+tutorial'
+      },
+      {
+        name: 'Single-leg Balance', sets: '3 × 20 sec each leg',
+        nSets: 3, targetReps: '20 sec/leg',
+        instructions: [
+          'Stand near a wall for safety. Slowly shift all weight onto one foot. Lift the other foot just off the ground.',
+          'Fix your gaze on a single static point on the wall at eye level — this dramatically improves balance.',
+          'Feel your standing ankle working to stabilise. Notice any wobbling and consciously try to control it.',
+          'Progress by: closing your eyes for 5 sec, standing on a folded mat, or making slow arm movements. Both sides.'
+        ],
+        yt1: 'single+leg+balance+ankle+stability+rehab',
+        yt2: 'ankle+proprioception+balance+exercise'
+      }
+    ]
+  },
+
+  C: {
+    name: 'Day C — Full Body',
+    warmup: 'Cat-cow stretches × 10 · Hip circles · Arm swings across body · Shoulder rotations · Slow marching with exaggerated arm swing · Thoracic rotation (seated, hand behind head).',
+    cooldown: 'Standing forward fold (bend knees if tight) · Standing quad stretch against wall · Pigeon pose (modified, supine figure-4) · Seated hamstring stretch · Lying glute stretch · 5 deep breaths.',
+    exercises: [
+      {
+        name: 'Romanian Deadlift', sets: '3 × 10',
+        nSets: 3, targetReps: '10',
+        instructions: [
+          'Stand with feet hip-width apart, holding a dumbbell in each hand, resting against the fronts of your thighs, palms facing your body.',
+          'Hinge at the hips — push them straight back while keeping the dumbbells close to your legs. Your back remains completely flat, chest stays proud. Bend knees slightly.',
+          'Lower until you feel a strong stretch in your hamstrings (typically mid-shin level). Stop before your back rounds.',
+          'Drive your hips forward to return to standing. Squeeze your glutes at the top. Move slowly — 3 counts down, 2 counts up. Never round your lower back.'
+        ],
+        yt1: 'romanian+deadlift+dumbbell+form+tutorial',
+        yt2: 'RDL+beginner+how+to+hinge+pattern'
+      },
+      {
+        name: 'Tricep Overhead Extension', sets: '3 × 10',
+        nSets: 3, targetReps: '10',
+        instructions: [
+          'Sit on a chair or stand. Hold one dumbbell with both hands by the top plate, arms extended overhead.',
+          'Keeping your upper arms close to your ears and pointing straight up, bend only at the elbows to lower the dumbbell behind your head.',
+          'Lower until elbows are at roughly 90°. Pause briefly.',
+          'Extend your arms fully back to the start, squeezing your triceps at the top. Do not flare your elbows — they should point forward throughout.'
+        ],
+        yt1: 'overhead+tricep+extension+dumbbell+form',
+        yt2: 'tricep+overhead+extension+tutorial+beginner'
+      },
+      {
+        name: 'Dumbbell Lateral Raises', sets: '3 × 12',
+        nSets: 3, targetReps: '12',
+        instructions: [
+          'Stand with feet hip-width apart, a dumbbell in each hand at your sides, palms facing inward. Soft bend in the elbows throughout.',
+          'Raise both arms out to the sides simultaneously until they reach shoulder height. Lead with your elbows, not your hands — as if pouring water from a jug.',
+          'Pause 1 second at the top.',
+          'Lower slowly over 3 counts. Use lighter weight than you think — shrugging or momentum means too heavy.'
+        ],
+        yt1: 'lateral+raise+dumbbell+proper+form+shoulder',
+        yt2: 'lateral+raise+tutorial+common+mistakes'
+      },
+      {
+        name: 'Reverse Crunch', sets: '3 × 12',
+        nSets: 3, targetReps: '12',
+        instructions: [
+          'Lie on your back. Place hands under your lower back for support. Lift both legs with knees bent at 90°, shins parallel to the floor.',
+          'Use your lower abdominals to curl your hips off the mat, drawing your knees toward your chest. Do not use momentum or swing your legs.',
+          'At the top, your hips should be lifted 3–5 cm off the mat.',
+          'Lower your hips back slowly to the start position without letting your feet touch the floor. The movement is small, slow, and deliberate.'
+        ],
+        yt1: 'reverse+crunch+lower+abs+proper+form',
+        yt2: 'reverse+crunch+tutorial+no+swing'
+      },
+      {
+        name: 'Wall Sit', sets: '3 × 20–30 sec hold',
+        nSets: 3, targetReps: '25 sec',
+        instructions: [
+          'Stand with your back flat against a smooth wall. Walk your feet out about 60 cm from the wall, hip-width apart.',
+          'Slide your back down the wall until your thighs approach parallel to the floor — or as far as comfortable. Stop immediately at any knee discomfort.',
+          'Your back should be flat against the wall. Knees at 90° (or 70°–80° if 90° is uncomfortable). Core engaged.',
+          'Hold still. Build from 20 to 30 seconds over weeks. If knees feel pressure, raise your position by 10 cm.'
+        ],
+        yt1: 'wall+sit+proper+form+tutorial',
+        yt2: 'wall+sit+exercise+knee+safe+how+to'
+      }
+    ]
+  }
+};
+
+/* ────────────────────────────────────────────
+   WORKOUT STATE
+──────────────────────────────────────────── */
+let curSessIdx = 0;
+let selectedPhase = null; // null = auto-detect from start date
+
+function selectPhase(p) {
+  selectedPhase = p;
+  curSessIdx = 0;
+  renderWorkouts();
+}
+
+function getActiveDpw() {
+  const p = selectedPhase || getPhase().phase;
+  return p >= 2 ? 3 : 2;
+}
+
+function chgSess(d) {
+  const n = getActiveDpw() >= 3 ? 3 : 2;
+  curSessIdx = ((curSessIdx + d) % n + n) % n;
+  renderWorkouts();
+}
+
+/* ────────────────────────────────────────────
+   RENDER WORKOUTS
+──────────────────────────────────────────── */
+function renderWorkouts() {
+  const { phase: recPhase } = getPhase();
+  const p   = selectedPhase || recPhase;
+  const dpw = p >= 2 ? 3 : 2;
+  const phaseLabels = {
+    1: 'Phase 1 · Weeks 1–8 · 25 min · 2×/week',
+    2: 'Phase 2 · Weeks 9–16 · 35 min · 3×/week',
+    3: 'Phase 3 · Weeks 17+ · 45 min · 3×/week'
+  };
+  const keys    = dpw >= 3 ? ['A','B','C'] : ['A','B'];
+  const key     = keys[curSessIdx % keys.length];
+  const session = SESSIONS[key];
+
+  // Update phase badge
+  const recTxt = p === recPhase ? ' ← recommended for you now' : '';
+  document.getElementById('phaseBdg').textContent  = '⬤ ' + phaseLabels[p] + recTxt;
+
+  // Update phase selector button states
+  [1,2,3].forEach(n => {
+    const btn = document.getElementById('pbtn'+n);
+    if (btn) btn.classList.toggle('active', n === p);
+    if (btn && n === recPhase) {
+      btn.querySelector('.phase-desc').textContent =
+        btn.querySelector('.phase-desc').textContent.replace(' ✦ recommended','') + (p === recPhase ? '' : ' ✦ recommended');
+    }
+  });
+
+  document.getElementById('sessLbl').textContent   = session.name;
+  document.getElementById('warmupTxt').textContent  = session.warmup;
+  document.getElementById('cooldownTxt').textContent = session.cooldown;
+
+  /* Reset effort slider */
+  document.getElementById('effR').value = '5';
+  document.getElementById('effV').textContent = '5';
+
+  // Render exercises immediately — no Firebase wait
+  _renderExList(key, session.exercises, {});
+
+  // Async: if user has custom swaps saved, re-render with them applied
+  R('workoutCustom/' + key).once('value', function(snap) {
+    var customs = snap.val();
+    if (!customs || !Object.keys(customs).length) return;
+    var overridden = session.exercises.map(function(ex, i) {
+      var ref = customs[String(i)];
+      if (ref) {
+        var parts = ref.split('_');
+        var srcEx = SESSIONS[parts[0]] && SESSIONS[parts[0]].exercises[parseInt(parts[1])];
+        if (srcEx) return Object.assign({}, srcEx, { _custom:true, _idx:i, _sk:key });
+      }
+      return Object.assign({}, ex, { _custom:false, _idx:i, _sk:key });
+    });
+    _renderExList(key, overridden, {});
+  });
+
+  loadRecentWkt();
+}
+
+function _renderExList(sessKey, exercises, doneMap) {
+  document.getElementById('exList').innerHTML = exercises.map(function(ex, i) {
+    return buildExCard(ex, i, sessKey);
+  }).join('');
+}
+
+/* Builds one exercise card — uses data-* attributes to avoid inline-onclick escaping */
+function buildExCard(ex, i, sessKey) {
+  var badge = ex._custom
+    ? '<span style="font-size:.62rem;background:var(--peach-l);color:#9B4A00;'
+    + 'padding:1px 6px;border-radius:6px;font-weight:700;margin-left:6px">custom</span>' : '';
+  var instr = ex.instructions.map(function(s){ return '<li>' + s + '</li>'; }).join('');
+  var rows  = buildSetRows(ex.nSets, ex.targetReps, i);
+
+  return '<div class="ex-card" id="exc-' + i + '">'
+    + '<div class="ex-hd" onclick="toggleEx(' + i + ')">'
+    +   '<div>'
+    +     '<div class="ex-name">' + ex.name + badge + '</div>'
+    +     '<div class="ex-sets">' + ex.sets + '</div>'
+    +   '</div>'
+    +   '<div style="display:flex;align-items:center;gap:5px">'
+    +     '<button class="ex-status-btn" id="exs-' + i + '" data-ex="' + i + '"'
+    +       ' onclick="event.stopPropagation();cycleExStatus(' + i + ')"'
+    +       ' style="padding:2px 8px;border-radius:6px;border:1.5px solid var(--border);background:var(--bg);font-size:.68rem;font-weight:700;cursor:pointer;white-space:nowrap">○ Todo</button>'
+    +     '<button class="btn btn-g btn-sm swap-ex-btn" style="padding:2px 7px;font-size:.68rem"'
+    +     ' data-sess="' + sessKey + '" data-idx="' + i + '" data-name="' + ex.name.replace(/"/g,'') + '">'
+    +     '&#8596;</button>'
+    +     '<span class="expand-icon">&#9662;</span>'
+    +   '</div>'
+    + '</div>'
+    + '<div class="ex-body" id="exb-' + i + '">'
+    +   '<ol class="ex-inst" style="padding-left:1.2rem">' + instr + '</ol>'
+    +   '<div class="yt-links">'
+    +     '<a href="https://www.youtube.com/results?search_query=' + ex.yt1 + '" target="_blank" rel="noopener" class="yt-l">&#9654; How-to</a>'
+    +     '<a href="https://www.youtube.com/results?search_query=' + ex.yt2 + '" target="_blank" rel="noopener" class="yt-l">&#9654; Tutorial</a>'
+    +   '</div>'
+    +   '<div class="set-hd">'
+    +     '<span style="text-align:center">Set</span>'
+    +     '<span>Reps done</span><span>Weight (kg)</span><span>Notes</span><span></span>'
+    +   '</div>'
+    +   rows
+    + '</div>'
+    + '</div>';
+}
+
+function buildSetRows(n, target, exIdx) {
+  return Array.from({ length: n }, (_, si) => `
+    <div class="set-row" id="sr-${exIdx}-${si}">
+      <span class="set-n">${si + 1}</span>
+      <input type="number" placeholder="${target}" min="0" max="100" style="text-align:center">
+      <input type="number" placeholder="— kg" min="0" max="200" step="0.5" style="text-align:center">
+      <input type="text" placeholder="Notes...">
+      <button class="sd-btn" onclick="toggleSetDone(this)">○</button>
+    </div>`).join('');
+}
+
+function toggleEx(i) {
+  const body = document.getElementById('exb-' + i);
+  const icon = document.querySelector(`#exc-${i} .expand-icon`);
+  const open = body.classList.toggle('open');
+  icon.style.transform = open ? 'rotate(180deg)' : '';
+}
+
+function toggleSetDone(btn) {
+  const done = btn.classList.toggle('done');
+  btn.textContent = done ? '✓' : '○';
+}
+
+/* ────────────────────────────────────────────
+   MARK SESSION COMPLETE
+──────────────────────────────────────────── */
+function markWktDone() {
+  var dpw     = getActiveDpw();
+  var keys    = dpw >= 3 ? ['A','B','C'] : ['A','B'];
+  var key     = keys[curSessIdx % keys.length];
+  var session = SESSIONS[key];
+  var effort  = parseInt(document.getElementById('effR').value);
+  var td      = todayStr();
+
+  var exSummary = {};
+  session.exercises.forEach(function(ex, i) {
+    exSummary[i] = { name: ex.name, status: _exStatus[i] || 'todo' };
+  });
+
+  R('workoutLogs/' + td).update({
+    session: session.name, sessionKey: key,
+    effort: effort, exercises: exSummary, ts: Date.now()
+  }).then(function() {
+    return R('dailyLogs/' + td).update({ workoutDone: true });
+  }).then(function() {
+    _exStatus = {};
+    toast('Session logged! Great work!', 'ok');
+    loadRecentWkt();
+    loadStats();
+  }).catch(function() { toast('Save failed.', 'err'); });
+}
+/* ────────────────────────────────────────────
+   RECENT WORKOUTS
+──────────────────────────────────────────── */
+function loadRecentWkt() {
+  R('workoutLogs').orderByKey().limitToLast(7).once('value', function(snap) {
+    var logs    = snap.val() || {};
+    var entries = Object.entries(logs).sort(function(a,b){ return b[0].localeCompare(a[0]); });
+    var el      = document.getElementById('recentWkt');
+
+    if (!entries.length) {
+      el.innerHTML = '<div class="tm ts">No sessions logged yet.</div>';
+      return;
+    }
+
+    el.innerHTML = entries.map(function(pair) {
+      var d = pair[0], log = pair[1];
+      var dLabel = new Date(d+'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+
+      var topLine = '';
+      if (log.session) {
+        topLine = '<div class="fw6" style="font-size:.85rem">' + log.session + '</div>';
+        if (log.exercises) {
+          var vals  = Object.values(log.exercises);
+          var done  = vals.filter(function(e){ return e.status==='done'; }).length;
+          var skip  = vals.filter(function(e){ return e.status==='skip'; }).length;
+          if (done || skip) topLine += '<div class="tm ts">' + done + '/' + vals.length + ' done' + (skip ? ', ' + skip + ' skipped' : '') + '</div>';
+        }
+      } else {
+        topLine = '<div class="fw6" style="font-size:.85rem">Custom activity</div>';
+      }
+
+      var actHtml = '';
+      if (log.activities) {
+        actHtml = Object.values(log.activities).map(function(a) {
+          return '<div class="tm ts">' + a.label + (a.name && a.name !== a.label ? ' — ' + a.name : '') + ' · ' + a.duration + 'min</div>';
+        }).join('');
+      }
+
+      var badge = log.effort ? '<div style="background:var(--lav-l);padding:3px 10px;border-radius:20px;font-size:.73rem;font-weight:700">Effort ' + log.effort + '/10</div>' : '';
+
+      return '<div class="wl-item"><div>' + topLine + actHtml + '<div class="tm ts">' + dLabel + '</div></div>' + badge + '</div>';
+    }).join('');
+  });
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   PART 5 — PROGRESS  +  BLOODWORK  +  initApp
+════════════════════════════════════════════════════════════════ */
+
+/* ────────────────────────────────────────────
+   PROGRESS
+──────────────────────────────────────────── */
+let wChartInst = null;
+
+function renderProgress() {
+  loadWeightChart();
+  renderHeatmap();
+  renderWeekStats();
+}
+
+/* ── WEIGHT CHART ── */
+function loadWeightChart() {
+  R('dailyLogs').orderByKey().limitToLast(60).once('value', snap => {
+    const logs    = snap.val() || {};
+    const entries = Object.entries(logs).sort((a,b) => a[0].localeCompare(b[0]));
+
+    const labels  = [];
+    const weights = [];
+
+    entries.forEach(([d, log]) => {
+      if (log.weight) {
+        labels.push(new Date(d + 'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'}));
+        weights.push(parseFloat(log.weight));
+      }
+    });
+
+    /* Always show a starting point */
+    if (!weights.length) {
+      labels.push('Start (May \'26)');
+      weights.push(89);
+    }
+
+    const ctx = document.getElementById('wChart').getContext('2d');
+    if (wChartInst) wChartInst.destroy();
+
+    wChartInst = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Weight (kg)',
+            data: weights,
+            borderColor: '#C8B8E8',
+            backgroundColor: 'rgba(200,184,232,0.12)',
+            borderWidth: 2.5,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: '#C8B8E8',
+            tension: 0.35,
+            fill: true
+          },
+          {
+            label: 'Target — 65 kg',
+            data: Array(labels.length).fill(65),
+            borderColor: '#9DCFB5',
+            borderWidth: 2,
+            borderDash: [6,4],
+            pointRadius: 0,
+            fill: false
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          y: {
+            min: 60, max: 95,
+            grid: { color: '#EDE8E4' },
+            ticks: { font: { family: "'Plus Jakarta Sans', sans-serif", size: 11 }, color: '#8B7D82' }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { font: { family: "'Plus Jakarta Sans', sans-serif", size: 11 }, color: '#8B7D82', maxTicksLimit: 12 }
+          }
+        },
+        plugins: {
+          legend: {
+            labels: { font: { family: "'Plus Jakarta Sans', sans-serif", size: 12 }, boxWidth: 16, color: '#2D2428' }
+          },
+          tooltip: {
+            backgroundColor: '#2D2428',
+            titleFont: { family: "'Plus Jakarta Sans', sans-serif", size: 12 },
+            bodyFont:  { family: "'Plus Jakarta Sans', sans-serif", size: 12 },
+            padding: 10, cornerRadius: 8
+          }
+        }
+      }
+    });
+  });
+}
+
+/* ── ACTIVITY HEATMAP ── */
+function renderHeatmap() {
+  const today  = new Date();
+  const dates  = [];
+  for (let i = 90; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    dates.push(dateStr(d));
+  }
+
+  const first = dates[0];
+  const last  = dates[dates.length - 1];
+
+  R('dailyLogs').orderByKey().startAt(first).endAt(last).once('value', snap => {
+    const logs = snap.val() || {};
+    const grid = document.getElementById('hmGrid');
+
+    grid.innerHTML = dates.map(ds => {
+      const log = logs[ds];
+      let cls   = '';
+      let tip   = ds;
+
+      if (log) {
+        const hasBasic = !!(log.weight || log.mood || log.energy);
+        const hasFull  = !!(log.weight && (log.sleep || log.mood));
+        if (log.workoutDone && hasFull) { cls = 'fw';      tip += ' · Full log + Workout 💪'; }
+        else if (hasFull)               { cls = 'full';    tip += ' · Full log'; }
+        else if (hasBasic)              { cls = 'partial'; tip += ' · Check-in'; }
+        else                            { cls = 'partial'; tip += ' · Logged'; }
+        if (log.weight) tip += ` · ${log.weight}kg`;
+      }
+
+      return `<div class="hm-cell ${cls}" title="${tip}"></div>`;
+    }).join('');
+  });
+}
+
+/* ── MONTHLY SUMMARIES ── */
+function renderWeekStats() {
+  const today = new Date();
+  const d7ago = new Date(today); d7ago.setDate(d7ago.getDate() - 6);
+  const startStr = dateStr(d7ago);
+  const endStr   = dateStr(today);
+  const container = document.getElementById('weekStatCards');
+  if (!container) return;
+  container.innerHTML = '<div class="tm ts" style="grid-column:1/-1;padding:.5rem">Loading stats...</div>';
+
+  R('dailyLogs').orderByKey().startAt(startStr).endAt(endStr).once('value', dSnap => {
+    const dlogs = dSnap.val() || {};
+    const vals  = Object.values(dlogs);
+    const ws    = vals.filter(l => l.weight).map(l => parseFloat(l.weight));
+    const avgW  = ws.length ? (ws.reduce((a,b)=>a+b,0)/ws.length).toFixed(1) : '—';
+    const minW  = ws.length ? Math.min(...ws).toFixed(1) : '—';
+    const logDays = vals.length;
+    const avgE  = vals.filter(l=>l.energy).length
+      ? (vals.filter(l=>l.energy).reduce((a,b)=>a+b.energy,0)/vals.filter(l=>l.energy).length).toFixed(1) : '—';
+    const avgH2O = vals.filter(l=>l.water).length
+      ? (vals.filter(l=>l.water).reduce((a,b)=>a+b.water,0)/vals.filter(l=>l.water).length).toFixed(1) : '—';
+
+    R('workoutLogs').orderByKey().startAt(startStr).endAt(endStr).once('value', wSnap => {
+      const wkts = Object.keys(wSnap.val() || {}).length;
+      container.innerHTML = `
+        <div class="month-c">
+          <div class="card-title" style="font-size:.85rem">📅 Last 7 Days</div>
+          <div class="ms-row"><span class="tm">Days Logged</span><span class="ms-v">${logDays}/7</span></div>
+          <div class="ms-row"><span class="tm">Workouts Done</span><span class="ms-v">${wkts}</span></div>
+        </div>
+        <div class="month-c">
+          <div class="card-title" style="font-size:.85rem">⚖️ Weight</div>
+          <div class="ms-row"><span class="tm">7-day Average</span><span class="ms-v">${avgW} kg</span></div>
+          <div class="ms-row"><span class="tm">Lowest This Week</span><span class="ms-v">${minW} kg</span></div>
+        </div>
+        <div class="month-c">
+          <div class="card-title" style="font-size:.85rem">🌿 Wellness</div>
+          <div class="ms-row"><span class="tm">Avg Energy</span><span class="ms-v">${avgE}/5</span></div>
+          <div class="ms-row"><span class="tm">Avg Water</span><span class="ms-v">${avgH2O} glasses</span></div>
+        </div>`;
+    });
+  });
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   BLOODWORK  — March 2026, Apollo Diagnostics
+════════════════════════════════════════════════════════════════ */
+
+const BW_DATA = [
+  {
+    marker: 'Vitamin B12',
+    value:  '<100 pg/mL',
+    status: 'crit',
+    label:  'Critical',
+    emoji:  '🔴',
+    meaning: 'Severely deficient. B12 is critical for nerve health, red blood cell production, DNA synthesis, and sustained energy. Deficiency causes fatigue, brain fog, tingling, and can cause permanent nerve damage if prolonged.',
+    plan:    'High-dose B12 supplementation ongoing (as prescribed). Eat B12-fortified foods: nutritional yeast, fortified plant milks. Retest in 3 months to track recovery.'
+  },
+  {
+    marker: 'Vitamin D3',
+    value:  '9.22 ng/mL',
+    status: 'crit',
+    label:  'Critical',
+    emoji:  '🔴',
+    meaning: 'Critically deficient (optimal >40 ng/mL). Vitamin D regulates immunity, mood, insulin sensitivity, thyroid function, and bone density. Very low D3 is extremely common with PCOS and worsens all metabolic markers.',
+    plan:    'High-dose D3 supplementation prescribed. 15–20 min morning sun exposure daily. Retest at 3 months. D3 + K2 combination improves absorption.'
+  },
+  {
+    marker: 'HbA1c',
+    value:  '6.0%',
+    status: 'flag',
+    label:  'Flag',
+    emoji:  '🟠',
+    meaning: 'Prediabetes range (5.7–6.4%). Reflects 3-month average blood glucose. With PCOS amplifying insulin resistance, this needs active intervention now — before it progresses to Type 2 diabetes.',
+    plan:    'Low-GI diet strictly: no refined sugar, no processed carbs, no fruit juice. High-protein and high-fibre meals. Daily movement. Target weight loss of 5–10% significantly reverses prediabetes risk.'
+  },
+  {
+    marker: 'TSH',
+    value:  '4.01 mIU/L',
+    status: 'flag',
+    label:  'Flag',
+    emoji:  '🟠',
+    meaning: 'Upper limit of normal (normal range: 0.4–4.0). The thyroid is working harder than it should. Subclinical hypothyroidism is very common alongside PCOS and worsens weight gain, fatigue, and hair issues.',
+    plan:    'Monitoring closely every 6 months. Selenium-rich foods support thyroid: pumpkin seeds, Brazil nuts, sunflower seeds. Optimising D3 also improves thyroid function.'
+  },
+  {
+    marker: 'HDL (Good Cholesterol)',
+    value:  '39 mg/dL',
+    status: 'flag',
+    label:  'Flag',
+    emoji:  '🟠',
+    meaning: 'Below optimal for women (ideal >50 mg/dL). Low HDL with PCOS increases long-term cardiovascular risk. HDL removes excess cholesterol from arteries — low levels mean less protection.',
+    plan:    'Resistance training is the most effective way to raise HDL. Healthy fats at every meal: avocado, nuts, seeds, olive oil. Weight loss of 5–10% body weight raises HDL significantly.'
+  },
+  {
+    marker: 'CRP (Inflammation)',
+    value:  '7.68 mg/L',
+    status: 'flag',
+    label:  'Flag',
+    emoji:  '🟠',
+    meaning: 'Elevated (optimal <1 mg/L, normal <3 mg/L). CRP is a direct marker of systemic inflammation. Chronic inflammation drives PCOS, worsens insulin resistance, causes weight gain, and accelerates cellular ageing.',
+    plan:    'Anti-inflammatory foods daily: turmeric, ginger, leafy greens, omega-3 seeds (flax, chia). Eliminate refined sugar and processed foods. Regular exercise reduces CRP by 20–30% within weeks.'
+  },
+  {
+    marker: 'RDW',
+    value:  '15%',
+    status: 'watch',
+    label:  'Watch',
+    emoji:  '🔵',
+    meaning: 'Mildly elevated (normal <14.5%). Indicates red blood cells vary in size — a classic sign of mixed nutritional deficiencies, particularly iron + B12/folate combination deficiency.',
+    plan:    'Should normalise as B12, D3, and iron supplementation corrects the underlying deficiencies. Monitor via next blood panel in 3–6 months.'
+  },
+  {
+    marker: 'Serum Iron',
+    value:  '50.5 μg/dL',
+    status: 'watch',
+    label:  'Watch',
+    emoji:  '🔵',
+    meaning: 'Low-normal (optimal: 60–170 μg/dL). Combined with borderline haemoglobin, indicates functional iron deficiency. PCOS, heavy periods, and a vegetarian diet all increase iron depletion risk.',
+    plan:    'Iron supplementation ongoing. Always take with Vitamin C (lemon water, amla juice) for absorption. Avoid taking with tea, coffee, or calcium-rich foods — they block absorption significantly.'
+  },
+  {
+    marker: 'Haemoglobin',
+    value:  '12.5 g/dL',
+    status: 'watch',
+    label:  'Watch',
+    emoji:  '🔵',
+    meaning: 'Borderline (normal: 12–16 g/dL, optimal: >13.5). Mild anaemia contributes to fatigue, breathlessness during light activity, poor exercise capacity, and brain fog.',
+    plan:    'Iron-rich meals daily: lentils, dark leafy greens, soya, sesame seeds, rajma. Iron supplement. Pair always with Vitamin C. Improving trajectory expected with supplementation.'
+  },
+  {
+    marker: 'LDL (Bad Cholesterol)',
+    value:  '107 mg/dL',
+    status: 'watch',
+    label:  'Watch',
+    emoji:  '🔵',
+    meaning: 'Borderline high (optimal <100 mg/dL for metabolic risk profiles). Not dangerous at this level, but worth managing given the HbA1c and PCOS context.',
+    plan:    'Soluble fibre actively lowers LDL: oats, lentils, flaxseed, psyllium husk. Regular exercise. Weight loss will improve this marker. Monitor annually.'
+  },
+  {
+    marker: 'Fasting Glucose',
+    value:  '93 mg/dL',
+    status: 'good',
+    label:  'Good',
+    emoji:  '🟢',
+    meaning: 'Normal range (70–100 mg/dL). While HbA1c is borderline, fasting glucose is currently well-controlled. This shows the dietary strategy is working for day-to-day glucose management.',
+    plan:    'Maintain: consistent low-GI eating, never skipping meals, protein + fibre at every meal, daily movement. This number staying under 100 is the goal.'
+  },
+  {
+    marker: 'HOMA2-IR',
+    value:  '0.68',
+    status: 'good',
+    label:  'Good',
+    emoji:  '🟢',
+    meaning: 'Normal insulin resistance index (optimal <1.4). A genuinely positive finding with PCOS. Your cells are currently responding to insulin adequately — the dietary approach is preventing worsening IR.',
+    plan:    'Maintain with low-GI diet, resistance training, weight management. This can worsen quickly with poor diet — keep protecting it.'
+  },
+  {
+    marker: 'eGFR (Kidney Function)',
+    value:  '127.6 mL/min',
+    status: 'good',
+    label:  'Good',
+    emoji:  '🟢',
+    meaning: 'Excellent. eGFR above 90 is normal; above 120 is optimal. Your kidneys are filtering very efficiently. Good hydration status reflected here.',
+    plan:    'Maintain with 8+ glasses of water daily. Avoid excess protein from supplements above your daily dietary requirement. Kidney health protects long-term metabolic health.'
+  },
+  {
+    marker: 'Liver ALT / AST',
+    value:  'Normal range',
+    status: 'good',
+    label:  'Good',
+    emoji:  '🟢',
+    meaning: 'Both liver enzymes are within normal range, indicating healthy liver function and no signs of fatty liver (NAFLD) — which is a real risk with PCOS and insulin resistance.',
+    plan:    'Protect with continued low-sugar, high-fibre diet. Regular exercise is highly protective for the liver. Avoid processed foods and alcohol. Recheck annually.'
+  }
+];
+
+function renderBloodwork() {
+  const el = document.getElementById('bwCards');
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem" id="bwGrid">
+      ${BW_DATA.map(b => `
+        <div class="bw-c">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <span class="bw-mk">${b.marker}</span>
+            <span class="sc sc-${b.status}">${b.emoji} ${b.label}</span>
+          </div>
+          <div class="bw-v">${b.value}</div>
+          <div class="bw-me">${b.meaning}</div>
+          <div class="div"></div>
+          <div class="bw-pl">📋 ${b.plan}</div>
+        </div>`).join('')}
+    </div>
+    <div class="note-box" style="font-size:.82rem;line-height:1.6">
+      <strong>Results from Apollo Diagnostics, March 2026.</strong><br>
+      This tracker is for your own reference and awareness. Always follow your doctor's advice for all medical decisions. Bloom helps you stay informed and on track. 🌸
+    </div>`;
+
+  /* Responsive: 1-col on small screen */
+  if (window.innerWidth <= 640) {
+    document.getElementById('bwGrid').style.gridTemplateColumns = '1fr';
+  }
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   initApp  — called once PIN is correct
+════════════════════════════════════════════════════════════════ */
+
+/* ── MEAL PLAN SEED ── */
+// 4-week rotating meal plan - different meals each week, cycles every 4 weeks from May 12 2026
+const ROTATION = [
+  [ // Week A
+    {breakfast:'s001',lunch:'s009',snack:'s039',dinner:'s012'},
+    {breakfast:'s006',lunch:'s018',snack:'s040',dinner:'s019'},
+    {breakfast:'s002',lunch:'s028',snack:'s044',dinner:'s022'},
+    {breakfast:'s007',lunch:'s033',snack:'s041',dinner:'s010'},
+    {breakfast:'s003',lunch:'s036',snack:'s045',dinner:'s014'},
+    {breakfast:'s004',lunch:'s024',snack:'s042',dinner:'s029'},
+    {breakfast:'s049',lunch:'s011',snack:'s043',dinner:'s032'}
+  ],
+  [ // Week B
+    {breakfast:'s005',lunch:'s017',snack:'s046',dinner:'s013'},
+    {breakfast:'s008',lunch:'s027',snack:'s031',dinner:'s025'},
+    {breakfast:'s001',lunch:'s035',snack:'s048',dinner:'s021'},
+    {breakfast:'s006',lunch:'s014',snack:'s039',dinner:'s015'},
+    {breakfast:'s002',lunch:'s037',snack:'s040',dinner:'s050'},
+    {breakfast:'s007',lunch:'s030',snack:'s041',dinner:'s016'},
+    {breakfast:'s004',lunch:'s023',snack:'s042',dinner:'s038'}
+  ],
+  [ // Week C
+    {breakfast:'s003',lunch:'s012',snack:'s043',dinner:'s019'},
+    {breakfast:'s049',lunch:'s018',snack:'s044',dinner:'s023'},
+    {breakfast:'s008',lunch:'s009',snack:'s045',dinner:'s034'},
+    {breakfast:'s005',lunch:'s028',snack:'s046',dinner:'s011'},
+    {breakfast:'s001',lunch:'s033',snack:'s047',dinner:'s013'},
+    {breakfast:'s006',lunch:'s024',snack:'s031',dinner:'s029'},
+    {breakfast:'s002',lunch:'s015',snack:'s043',dinner:'s036'}
+  ],
+  [ // Week D
+    {breakfast:'s007',lunch:'s032',snack:'s039',dinner:'s021'},
+    {breakfast:'s004',lunch:'s037',snack:'s040',dinner:'s025'},
+    {breakfast:'s005',lunch:'s017',snack:'s042',dinner:'s010'},
+    {breakfast:'s008',lunch:'s035',snack:'s044',dinner:'s050'},
+    {breakfast:'s003',lunch:'s027',snack:'s041',dinner:'s016'},
+    {breakfast:'s049',lunch:'s030',snack:'s048',dinner:'s023'},
+    {breakfast:'s001',lunch:'s011',snack:'s045',dinner:'s038'}
+  ]
+];
+
+const APP_START = new Date('2026-05-12T00:00:00');
+
+function getTemplateForDay(ds) {
+  var date   = new Date(ds + 'T00:00:00');
+  var dayNum = Math.floor((date - APP_START) / 86400000);
+  var weekNum= Math.floor(dayNum / 7);
+  var dow    = (date.getDay() + 6) % 7;
+  var rot    = ((weekNum % 4) + 4) % 4;
+  var ids    = ROTATION[rot][dow];
+  var result = {};
+  ['breakfast','lunch','snack','dinner'].forEach(function(t) {
+    result[t] = SEEDS.find(function(s){ return s.id === ids[t]; }) || null;
+  });
+  return result;
+}
+
+
+async function seedMealPlanIfEmpty() {
+  // Template meals now show directly in the planner without seeding.
+  // This function is kept as a no-op to avoid breaking the call chain.
+}
+
+/* ── CLEAR A MEAL SLOT ── */
+function clearSlot(ds, type) {
+  // Save 'none' (not null) so we know the user deliberately cleared this slot
+  R('mealPlan/' + ds).update({ [type]: 'none', [type+'_eaten']: null }).then(() => {
+    renderWeek();
+    if (ds === todayStr()) loadTodayMealsPreview();
+    toast('Slot cleared — template hidden.', '');
+  });
+}
+
+/* ════ EXERCISE PICKER ════ */
+var _exSessKey = null;
+var _exIdx     = null;
+
+function openExPicker(sessKey, idx, name) {
+  _exSessKey = sessKey;
+  _exIdx     = idx;
+  document.getElementById('exPickerTitle').textContent = 'Swap: ' + name;
+
+  var list = document.getElementById('exPickerList');
+  list.innerHTML = '';
+
+  ['A','B','C'].forEach(function(sk) {
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'font-size:.68rem;font-weight:700;color:var(--muted);padding:5px 0 3px;text-transform:uppercase;letter-spacing:.04em';
+    hdr.textContent = 'Day ' + sk + ' - ' + SESSIONS[sk].name;
+    list.appendChild(hdr);
+
+    SESSIONS[sk].exercises.forEach(function(ex, i) {
+      var item = document.createElement('div');
+      item.className = 'p-item';
+      item.innerHTML = '<div><div class="fw6" style="font-size:.85rem">'+ex.name+'</div><div class="tm ts">'+ex.sets+'</div></div><span style="color:var(--muted)">&#8594;</span>';
+      item.onclick = (function(s, n){ return function(){ doExSwap(s, n); }; })(sk, i);
+      list.appendChild(item);
+    });
+  });
+
+  openMo('moExPicker');
+}
+
+/* Event delegation for swap buttons — avoids all inline-onclick escaping */
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('.swap-ex-btn');
+  if (btn) {
+    e.stopPropagation();
+    openExPicker(btn.dataset.sess, parseInt(btn.dataset.idx), btn.dataset.name);
+  }
+});
+
+function doExSwap(srcKey, srcIdx) {
+  R('workoutCustom/' + _exSessKey + '/' + _exIdx).set(srcKey + '_' + srcIdx)
+    .then(function() {
+      closeMo('moExPicker');
+      renderWorkouts();
+      toast('Exercise swapped!', 'ok');
+    });
+}
+
+function resetExercise() {
+  if (_exSessKey === null) return;
+  R('workoutCustom/' + _exSessKey + '/' + _exIdx).remove()
+    .then(function() {
+      closeMo('moExPicker');
+      renderWorkouts();
+      toast('Reset to original.', '');
+    });
+}
+
+
+/* ── EXERCISE STATUS (done / skip / todo) ── */
+var _exStatus = {};  // { 0: 'done', 1: 'skip', 2: 'todo' ... } for current session
+
+function cycleExStatus(idx) {
+  var current = _exStatus[idx] || 'todo';
+  var next    = current === 'todo' ? 'done' : current === 'done' ? 'skip' : 'todo';
+  _exStatus[idx] = next;
+  var btn = document.getElementById('exs-' + idx);
+  if (!btn) return;
+  if (next === 'done') {
+    btn.textContent = '✓ Done';
+    btn.style.background  = 'var(--mint-l)';
+    btn.style.borderColor = 'var(--mint)';
+    btn.style.color       = '#1B5E20';
+  } else if (next === 'skip') {
+    btn.textContent = '✗ Skipped';
+    btn.style.background  = '#FFEBEE';
+    btn.style.borderColor = '#FFCDD2';
+    btn.style.color       = '#C62828';
+  } else {
+    btn.textContent = '○ Todo';
+    btn.style.background  = 'var(--bg)';
+    btn.style.borderColor = 'var(--border)';
+    btn.style.color       = 'var(--muted)';
+  }
+}
+
+/* ── CUSTOM ACTIVITY LOG ── */
+function saveCustomActivity() {
+  var type  = document.getElementById('caType').value;
+  var name  = document.getElementById('caName').value.trim();
+  var dur   = parseInt(document.getElementById('caDur').value) || 0;
+  var inten = parseInt(document.getElementById('caIntensity').value) || 3;
+  var label = document.getElementById('caType').options[document.getElementById('caType').selectedIndex].text;
+
+  if (!dur) { toast('Please enter a duration.', 'err'); return; }
+
+  var td  = todayStr();
+  var key = 'activity_' + Date.now();
+  var data = {
+    type: type, label: label,
+    name: name || label,
+    duration: dur, intensity: inten,
+    ts: Date.now()
+  };
+
+  R('workoutLogs/' + td + '/activities/' + key).set(data)
+    .then(function() {
+      // Mark today as active
+      R('dailyLogs/' + td).update({ workoutDone: true });
+      document.getElementById('caName').value = '';
+      document.getElementById('caDur').value  = '';
+      loadRecentWkt();
+      toast('Activity saved! ' + label, 'ok');
+    })
+    .catch(function(){ toast('Save failed', 'err'); });
+}
+
+
+function initApp() {
+  initFirebase();
+  initDashboard();
+  if (typeof db !== 'undefined' && db) {
+    seedIfEmpty()
+      .then(() => seedMealPlanIfEmpty())
+      .catch(err => console.warn('Init error:', err));
+  }
+  // Auto-select recommended phase on load
+  const { phase: rec } = getPhase();
+  selectedPhase = rec;
+  // Highlight the recommended phase button once workouts section renders
+  setTimeout(() => {
+    [1,2,3].forEach(n => {
+      const btn = document.getElementById('pbtn'+n);
+      if (btn) btn.classList.toggle('active', n === rec);
+    });
+  }, 100);
+}
+
+</script>
+
+</body>
+</html>
