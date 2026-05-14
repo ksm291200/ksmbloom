@@ -606,7 +606,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
     <div class="nav-i" data-s="workouts"><span class="nav-e">💪</span><span>Workouts</span></div>
     <div class="nav-i" data-s="progress"><span class="nav-e">📈</span><span>Progress</span></div>
     <div class="nav-i" data-s="bloodwork"><span class="nav-e">🩸</span><span>Bloodwork</span></div>
-    <div class="sb-foot">Bloom v1 · May 2026</div>
+    <div class="sb-foot">Bloom v3 · May 2026</div>
   </nav>
 
   <!-- MAIN CONTENT (sections injected by Parts 2–5) -->
@@ -686,6 +686,27 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
           </div>
         </div>
       </div>
+
+      <!-- CHECK-IN HISTORY -->
+      <div class="card mb2" id="ciHistoryCard">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+          <div class="card-title" style="margin:0">Check-in Log 📋</div>
+          <button class="btn btn-g btn-sm" onclick="toggleCIHistory()">Show / Hide</button>
+        </div>
+        <div id="ciHistoryBody" style="display:none">
+          <div id="ciHistoryList"><div class="tm ts">Loading...</div></div>
+        </div>
+      </div>
+
+      <!-- TONIGHT'S PREP CARD -->
+      <div class="card mb2">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+          <div class="card-title" style="margin:0">Tonight's Prep 🥘</div>
+          <span class="tm ts">for tomorrow's meals</span>
+        </div>
+        <div id="tomorrowPrep"><div class="tm ts">Loading...</div></div>
+      </div>
+
     </div>
 
     <!-- PLANNER -->
@@ -1172,6 +1193,7 @@ function initDashboard() {
   loadStats();
   loadTodayMealsPreview();
   loadTodayWktPreview();
+  loadTomorrowPrep();
 }
 
 /* ── ENERGY ── */
@@ -1248,29 +1270,31 @@ function loadStats() {
 /* ── TODAY MEAL PREVIEW ── */
 function loadTodayMealsPreview() {
   var td   = todayStr();
-  var dayI = ((new Date(td+'T00:00:00').getDay()) + 6) % 7;
+  var seedLib = {}; SEEDS.forEach(function(s){ seedLib[s.id] = s; });
 
-  // Render template immediately
   function draw(plan, lib) {
     plan = plan || {}; lib = lib || {};
     var html = MEAL_TYPES.map(function(t) {
       var pv   = plan[t];
       var _td2 = getTemplateForDay(td); var tmpl = _td2 ? _td2[t] : null;
       var eff  = (pv === 'none') ? null : (pv != null ? pv : tmpl);
-      var name = eff ? (typeof eff === 'object' ? eff.name : (lib[eff] ? lib[eff].name : '—')) : '—';
+      var name = eff ? (typeof eff === 'object' ? eff.name : (lib[eff] ? lib[eff].name : (SEEDS.find(function(s){return s.id===eff;})||{name:'—'}).name)) : '—';
       return '<div class="mp-slot"><span class="tm">' + MEAL_LABELS[t] + '</span>'
            + '<span class="fw6" style="font-size:.82rem;text-align:right;max-width:55%">' + name + '</span></div>';
     }).join('');
     document.getElementById('tdMeals').innerHTML = html;
   }
 
-  draw({}, {}); // instant render from template
+  // Immediate render from localPlanCache (picks up in-session swaps)
+  var localPlan = (window._localPlanCache && window._localPlanCache[td]) || {};
+  draw(localPlan, Object.assign({}, seedLib, libCache));
 
-  // Then update with Firebase data
+  // Then update with Firebase + merge localPlanCache on top
   R('mealPlan/' + td).once('value', function(planSnap) {
-    var plan = planSnap.val() || {};
+    var fbPlan = planSnap.val() || {};
+    var local  = (window._localPlanCache && window._localPlanCache[td]) || {};
     R('mealLibrary').once('value', function(libSnap) {
-      draw(plan, libSnap.val() || {});
+      draw(Object.assign({}, fbPlan, local), Object.assign({}, seedLib, libSnap.val() || {}, libCache));
     });
   });
 }
@@ -1320,18 +1344,30 @@ function renderWeek() {
     dates[0].toLocaleDateString('en-IN',{day:'numeric',month:'short'}) + ' \u2013 ' +
     dates[6].toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
 
-  // PASS 1: render template immediately, no Firebase wait
-  _drawWeek(dates, dateStrs, td, dayNames, {}, {});
+  // PASS 1: render from localPlanCache (includes any picker selections made this session)
+  var localPlans = {};
+  dateStrs.forEach(function(ds) {
+    localPlans[ds] = (window._localPlanCache && window._localPlanCache[ds]) ? Object.assign({}, window._localPlanCache[ds]) : {};
+  });
+  var seedLib = {};
+  SEEDS.forEach(function(s){ seedLib[s.id] = s; });
+  _drawWeek(dates, dateStrs, td, dayNames, localPlans, Object.assign({}, seedLib, libCache));
 
-  // PASS 2: load Firebase overrides and redraw (handles swaps, eaten, cleared slots)
+  // PASS 2: load Firebase overrides and redraw, merging with localPlanCache on top
   var planPromises = dateStrs.map(function(ds){ return R('mealPlan/'+ds).once('value'); });
   Promise.all(planPromises.concat([R('mealLibrary').once('value')])).then(function(snaps) {
-    var lib   = snaps[7].val() || {};
-    var plans = {};
-    dateStrs.forEach(function(ds, i){ plans[ds] = snaps[i].val() || {}; });
+    var fbLib  = snaps[7].val() || {};
+    var lib    = Object.assign({}, seedLib, fbLib, libCache);
+    var plans  = {};
+    dateStrs.forEach(function(ds, i){
+      var fbPlan = snaps[i].val() || {};
+      // localPlanCache wins over Firebase (user's in-session picks override stale Firebase)
+      var local  = (window._localPlanCache && window._localPlanCache[ds]) || {};
+      plans[ds]  = Object.assign({}, fbPlan, local);
+    });
     _drawWeek(dates, dateStrs, td, dayNames, plans, lib);
   }).catch(function(){
-    // Firebase failed — template from Pass 1 stays visible, no crash
+    // Firebase failed — Pass 1 with localPlanCache stays visible
   });
 }
 
@@ -1341,6 +1377,17 @@ function _drawWeek(dates, dateStrs, td, dayNames, plans, lib) {
     var ds      = dateStrs[i];
     var plan    = plans[ds] || {};
     var isToday = ds === td;
+    // Compute day protein total for display
+    var dayProtein = 0;
+    MEAL_TYPES.forEach(function(t) {
+      var rv = plan[t]; var td2 = getTemplateForDay(ds); var tv = td2 ? td2[t] : null;
+      var pv = (rv==='none') ? null : (rv!=null ? rv : tv);
+      var m2 = pv ? (typeof pv==='object' ? pv : (lib[pv]||SEEDS.find(function(s){return s.id===pv;})||null)) : null;
+      if (m2 && m2.protein) dayProtein += parseInt(m2.protein)||0;
+    });
+    var protLabel = dayProtein > 0 ? '<div style="font-size:.68rem;font-weight:700;color:'+(dayProtein>=90?'#1B5E20':dayProtein>=70?'#E65100':'#C62828')
+      +';text-align:center;margin-bottom:4px">~'+dayProtein+'g / 90g target</div>' : '';
+
     var slots = MEAL_TYPES.map(function(type) {
       var raw     = plan[type];
       var tmplDay = getTemplateForDay(ds);
@@ -1367,10 +1414,12 @@ function _drawWeek(dates, dateStrs, td, dayNames, plans, lib) {
           +   '<span class="chip ' + cuisineClass(meal.cuisine) + '" style="font-size:.6rem;padding:2px 6px">' + meal.cuisine + '</span>'
           +   '<span class="eat-tog ' + eatenDone + '" onclick="toggleEaten(\'' + ds + '\',\'' + type + '\',this)">' + eatenTxt + '</span>'
           + '</div>'
-          + '<div style="font-size:.7rem;color:var(--muted);margin-top:3px">' + meal.calories + ' kcal \u00b7 ' + meal.protein + 'g pro</div>'
-          + '<div style="margin-top:5px">'
+          + '<div style="font-size:.7rem;color:var(--muted);margin-top:3px">' + (meal.serving ? '📐 ' + meal.serving + ' · ' : '') + meal.calories + ' kcal · ' + meal.protein + 'g pro</div>'
+          + '<div style="margin-top:5px;display:flex;gap:4px">'
           +   '<button class="btn btn-g btn-sm" style="padding:2px 7px;font-size:.65rem"'
           +     ' onclick="openPicker(\'' + ds + '\',\'' + type + '\')">&#8596; Swap</button>'
+          +   '<button class="btn btn-g btn-sm" style="padding:2px 7px;font-size:.65rem"'
+          +     ' onclick="openDetail(\'' + meal.id + '\')">📖 Recipe</button>'
           + '</div>'
           + '</div>';
       } else {
@@ -1385,6 +1434,7 @@ function _drawWeek(dates, dateStrs, td, dayNames, plans, lib) {
       +   '<div class="day-nm">' + dayNames[i] + '</div>'
       +   '<div class="day-num">' + d.getDate() + '</div>'
       + '</div>'
+      + protLabel
       + slots
       + '</div>';
   }).join('');
@@ -1416,68 +1466,84 @@ function openPicker(ds, mealType) {
   document.getElementById('pickerSrch').value = '';
 
   pickerCB = function(mealId) {
-    // Save the full meal object so the same meal works across any slot/day
-    var fromSeeds = SEEDS.find(function(s){ return s.id === mealId; }) || null;
-    R('mealLibrary/' + mealId).once('value', function(snap) {
-      var data = snap.val() || fromSeeds || {id: mealId, name: mealId, cuisine:'Other', calories:0, protein:0};
-      R('mealPlan/'+ds).update({[mealType]: data}).then(function() {
-        closeMo('moPicker');
-        renderWeek();
-        if (ds === todayStr()) loadTodayMealsPreview();
-        toast('Meal planned!', 'ok');
-      });
+    // Save just the ID string — keeps Firebase payload tiny and consistent with initial seed format
+    // Update local planCache immediately so the UI reflects the change before Firebase confirms
+    if (!window._localPlanCache) window._localPlanCache = {};
+    if (!window._localPlanCache[ds]) window._localPlanCache[ds] = {};
+    window._localPlanCache[ds][mealType] = mealId;
+
+    closeMo('moPicker');
+    renderWeek(); // renders immediately from localPlanCache
+    if (ds === todayStr()) loadTodayMealsPreview();
+    // Refresh tonight's prep if the swapped day is today (affects tonight) or tomorrow
+    var tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    if (ds === todayStr() || ds === dateStr(tomorrow)) loadTomorrowPrep();
+    toast('Meal planned! 🌸', 'ok');
+
+    // Then persist to Firebase in the background
+    R('mealPlan/'+ds).update({[mealType]: mealId}).catch(function() {
+      toast('Saved locally — sync failed, check connection.', '');
     });
-  };;
+  };
 
   renderPicker();
   openMo('moPicker');
 }
 
 function renderPicker() {
-  const q  = document.getElementById('pickerSrch').value.toLowerCase().trim();
-  R('mealLibrary').once('value', function(snap) {
-    var lib  = snap.val() || {};
-    var pool = Object.keys(lib).length > 0 ? Object.values(lib) : SEEDS;
-    var items = pool.filter(function(m) {
-      if (q && !m.name.toLowerCase().includes(q) && !m.cuisine.toLowerCase().includes(q)) return false;
-      return true;
-    });
-    /* Sort: matching type first */
-    items.sort((a,b) => {
-      if (a.type === pickerType && b.type !== pickerType) return -1;
-      if (b.type === pickerType && a.type !== pickerType) return  1;
-      return a.name.localeCompare(b.name);
-    });
+  const q = (document.getElementById('pickerSrch')?.value || '').toLowerCase().trim();
+  // Use SEEDS as the canonical source — always up to date with latest meal content
+  // Merge with any user-added meals from libCache
+  var seedMap = {};
+  SEEDS.forEach(function(s){ seedMap[s.id] = s; });
+  // Override with libCache entries (user-added meals), but keep SEEDS for built-in meals
+  var pool = Object.values(Object.assign({}, seedMap, 
+    Object.fromEntries(Object.entries(libCache).filter(function(e){ 
+      return !seedMap[e[0]]; // only add user-added (not in SEEDS)
+    }))
+  ));
 
-    if (!items.length) {
-      document.getElementById('pickerList').innerHTML = '<div class="tm ts" style="padding:1rem;text-align:center">No meals found.</div>';
-      return;
-    }
-
-    document.getElementById('pickerList').innerHTML = items.map(m => `
-      <div class="p-item" onclick="pickerSelect('${m.id}')">
-        <div>
-          <div class="fw6" style="font-size:.85rem">${m.name}</div>
-          <div style="display:flex;gap:6px;margin-top:3px;align-items:center">
-            <span class="chip ${cuisineClass(m.cuisine)}">${m.cuisine}</span>
-            <span class="tm ts">${m.calories} kcal · ${m.protein}g protein</span>
-          </div>
-        </div>
-        <span style="color:var(--muted)">→</span>
-      </div>`).join('');
+  var items = pool.filter(function(m) {
+    if (q && !m.name.toLowerCase().includes(q) && !(m.cuisine||'').toLowerCase().includes(q)) return false;
+    return true;
   });
+
+  items.sort(function(a,b) {
+    if (a.type === pickerType && b.type !== pickerType) return -1;
+    if (b.type === pickerType && a.type !== pickerType) return  1;
+    return a.name.localeCompare(b.name);
+  });
+
+  if (!items.length) {
+    document.getElementById('pickerList').innerHTML = '<div class="tm ts" style="padding:1rem;text-align:center">No meals found.</div>';
+    return;
+  }
+
+  document.getElementById('pickerList').innerHTML = items.map(function(m) {
+    var sid = m.id.replace(/'/g, "\\'");
+    var servingTxt = m.serving ? ('<span class="tm ts" style="display:block;margin-top:1px">📐 ' + m.serving + '</span>') : '';
+    return '<div class="p-item" onclick="pickerSelect(\'' + sid + '\')">'
+      + '<div style="flex:1">'
+      + '<div class="fw6" style="font-size:.85rem">' + m.name + '</div>'
+      + '<div style="display:flex;gap:6px;margin-top:3px;align-items:center;flex-wrap:wrap">'
+      + '<span class="chip ' + cuisineClass(m.cuisine) + '">' + m.cuisine + '</span>'
+      + '<span class="tm ts">' + m.calories + ' kcal · ' + m.protein + 'g protein</span>'
+      + '</div>'
+      + servingTxt
+      + '</div>'
+      + '<span style="color:var(--muted)">→</span>'
+      + '</div>';
+  }).join('');
 }
 
 function pickerSelect(id) { if (pickerCB) pickerCB(id); }
 
 function surpriseMe() {
-  R('mealLibrary').once('value', function(snap) {
-    var lib   = snap.val() || {};
-    var pool  = Object.keys(lib).length > 0 ? Object.values(lib) : SEEDS;
-    if (!pool.length) return;
-    var pick  = pool[Math.floor(Math.random() * pool.length)];
-    pickerSelect(pick.id);
-  });
+  // Filter to matching type for better suggestions, fall back to all
+  var pool = SEEDS.filter(function(m){ return m.type === pickerType; });
+  if (!pool.length) pool = SEEDS;
+  var pick = pool[Math.floor(Math.random() * pool.length)];
+  pickerSelect(pick.id);
 }
 
 
@@ -1495,8 +1561,22 @@ let detailMealId   = null;
 
 /* ── LOAD LIBRARY ── */
 function loadLib() {
-  R('mealLibrary').once('value', snap => {
-    libCache = snap.val() || {};
+  // Show local SEEDS immediately so library is never empty
+  if (!Object.keys(libCache).length) {
+    SEEDS.forEach(function(s){ libCache[s.id] = s; });
+    renderLib();
+  }
+  // Then sync with Firebase (picks up any user-added meals)
+  R('mealLibrary').once('value', function(snap) {
+    var fbData = snap.val();
+    if (fbData && Object.keys(fbData).length > 0) {
+      libCache = fbData;
+    } else {
+      // Seed Firebase with local data silently
+      var updates = {};
+      SEEDS.forEach(function(s){ updates['mealLibrary/' + s.id] = s; });
+      db.ref('bloom').update(updates).catch(function(){});
+    }
     renderLib();
   });
 }
@@ -1546,7 +1626,18 @@ function openDetail(id) {
   document.getElementById('mdPro').textContent  = (m.protein  || '—') + 'g';
   document.getElementById('mdCrb').textContent  = (m.carbs    || '—') + 'g';
   document.getElementById('mdFat').textContent  = (m.fat      || '—') + 'g';
-  document.getElementById('mdRec').textContent  = m.recipe || 'No recipe added yet.';
+  // Build serving info header
+  var servingNote = '';
+  if (m.calories || m.protein) {
+    servingNote = '1 serving';
+    if (m.calories) servingNote += ' · ' + m.calories + ' kcal';
+    if (m.protein)  servingNote += ' · ' + m.protein + 'g protein';
+    if (m.carbs)    servingNote += ' · ' + m.carbs + 'g carbs';
+    if (m.fat)      servingNote += ' · ' + m.fat + 'g fat';
+  }
+  var recipeEl = document.getElementById('mdRec');
+  recipeEl.innerHTML = (servingNote ? '<div style="font-size:.72rem;font-weight:700;color:var(--muted);background:var(--bg);border-radius:8px;padding:6px 10px;margin-bottom:.75rem;letter-spacing:.02em">📐 ' + servingNote + '</div>' : '')
+    + '<div style="white-space:pre-line">' + (m.recipe || 'No recipe added yet.') + '</div>';
 
   const nEl = document.getElementById('mdNts');
   if (m.notes) { nEl.style.display='block'; nEl.textContent = '💡 ' + m.notes; }
@@ -1641,445 +1732,548 @@ function saveMeal() {
 const SEEDS = [
 
 /* ── INDIAN BREAKFASTS ── */
-{id:'s001',name:'Moong Dal Chilla',type:'breakfast',cuisine:'Indian',calories:220,protein:14,carbs:28,fat:6,
-recipe:`1. Soak 1 cup split moong dal overnight or 6 hours. Drain and grind to a smooth batter with minimal water.
-2. Add finely chopped onion, green chilli, fresh ginger (1 inch), coriander leaves, salt, and cumin. Mix well.
-3. Heat a non-stick tawa on medium. Pour a ladle of batter and spread into a thin 20 cm circle.
-4. Drizzle a few drops of oil around the edges. Cook 2 min until golden and crisp, then flip.
-5. Cook the other side 1 min. Serve hot with green coriander chutney or tomato chutney.`,
-notes:'High-protein, low-GI breakfast. Ideal for PCOS blood sugar management. Prep batter the night before.'},
+{id:'s001',name:'Moong Dal Chilla',type:'breakfast',cuisine:'Indian',calories:220,protein:14,carbs:28,fat:6,serving:"2–3 chillas (from 1 cup dal)",
+recipe:`1. Soak 1 cup split moong dal 6 hours. Drain and grind to smooth batter.
+2. Add chopped onion, green chilli, ginger, coriander, salt, cumin. Mix well.
+3. Heat non-stick tawa on medium. Pour a ladle of batter and spread thin.
+4. Drizzle oil around edges. Cook 2 min until golden, flip and cook 1 more min.
+5. Serve hot with green chutney.`,
+notes:'High protein low-GI breakfast. Prep batter overnight.'},
 
-{id:'s002',name:'Tofu Bhurji',type:'breakfast',cuisine:'Indian',calories:190,protein:13,carbs:8,fat:11,
-recipe:`1. Press 200g firm tofu between kitchen paper for 15 min. Crumble into small, scramble-like pieces.
-2. Heat 1 tsp oil in a non-stick pan. Add cumin seeds, then finely diced onion and sauté 3 min.
-3. Add green chilli, grated ginger, diced tomato. Cook until tomato breaks down, about 3 min.
-4. Add ¼ tsp turmeric, ½ tsp red chilli powder, salt. Stir for 1 min.
-5. Add crumbled tofu. Cook on medium for 5–7 min, stirring occasionally, until lightly golden.
-6. Finish with fresh coriander and a squeeze of lemon. Serve with whole wheat roti or toast.`,
-notes:'Egg-free scramble. Add spinach for extra iron. Nutritional yeast (1 tbsp) adds a cheesy depth.'},
+{id:'s002',name:'Moong Dal Onion Pancakes',type:'breakfast',cuisine:'Indian',calories:215,protein:14,carbs:26,fat:6,serving:"3–4 pancakes (from 1 cup dal)",
+recipe:`1. Soak 1 cup moong dal 4 hours (or overnight). Drain and blend to smooth batter with ginger, green chilli, salt.
+2. Fold in finely diced onion, fresh coriander, and cumin seeds.
+3. Heat a non-stick pan on medium. Pour a ladle of batter and spread to a 20cm circle.
+4. Cook until bubbles form and edges set — about 2 min. Drizzle oil around edges, flip.
+5. Cook 1 more min until golden. Serve with green chutney and yoghurt.`,
+notes:'High-protein, no soya. Prep batter overnight for a quick morning. Very filling.'},
 
-{id:'s003',name:'Methi Thepla',type:'breakfast',cuisine:'Indian',calories:210,protein:7,carbs:32,fat:7,
-recipe:`1. Combine 1 cup whole wheat flour, ½ cup finely chopped fresh methi (fenugreek) leaves, 1 tsp ajwain, ½ tsp red chilli powder, ¼ tsp turmeric, pinch of asafoetida, and salt.
-2. Add 2 tbsp low-fat yoghurt and enough water to make a smooth, slightly stiff dough. Rest 15 min.
-3. Divide into lemon-sized balls. Dust with flour and roll out into thin, even rounds (3mm thick).
-4. Cook on a hot tawa until small bubbles form. Flip, press gently with a spatula, and cook both sides until golden with minimal oil.
-5. Serve with green chutney and low-fat yoghurt, or pack for on-the-go meals.`,
-notes:'Iron-rich from methi. Store stacked with a cloth in between for up to 2 days. Great travel food.'},
+{id:'s003',name:'Methi Thepla',type:'breakfast',cuisine:'Indian',calories:210,protein:7,carbs:32,fat:7,serving:"3–4 theplas",
+recipe:`1. Combine 1 cup whole wheat flour, ½ cup chopped fresh methi, 1 tsp ajwain, chilli powder, turmeric, salt.
+2. Add 2 tbsp yoghurt and water to make a firm dough. Rest 15 min.
+3. Divide into balls. Roll out thin.
+4. Cook on hot tawa with minimal oil until golden on both sides.
+5. Serve with green chutney and yoghurt.`,
+notes:'Iron-rich from methi. Stores well for 2 days.'},
 
-{id:'s004',name:'Oats Uttapam',type:'breakfast',cuisine:'Indian',calories:205,protein:9,carbs:30,fat:5,
-recipe:`1. Blend 1 cup rolled oats into a coarse powder. Mix with ¼ cup low-fat yoghurt, salt, and enough water to make a thick, pourable batter. Rest 20 min.
-2. Add finely chopped coriander and a pinch of cumin to the batter.
-3. Heat a non-stick pan on medium. Pour a ladle of batter and spread to medium thickness — thicker than a dosa.
-4. Immediately press diced onion, tomato, green chilli, and capsicum onto the wet surface.
-5. Cover and cook on low-medium for 3 min. Flip carefully and cook uncovered 2 min more.
-6. Serve with coconut chutney or sambar.`,
-notes:'High-fibre oats keep blood sugar stable. Excellent PCOS breakfast. Add grated carrot for extra nutrition.'},
+{id:'s004',name:'Oats Uttapam',type:'breakfast',cuisine:'Indian',calories:205,protein:9,carbs:30,fat:5,serving:"2 uttapams",
+recipe:`1. Blend 1 cup rolled oats coarsely. Mix with ¼ cup yoghurt, water, salt to thick batter. Rest 20 min.
+2. Heat pan. Pour ladle of batter, spread to medium thickness.
+3. Press diced onion, tomato, green chilli onto wet surface.
+4. Cover and cook 3 min. Flip and cook 2 more min.
+5. Serve with coconut chutney.`,
+notes:'High fibre, good for blood sugar stability.'},
 
-{id:'s005',name:'Sprouts Moong Toast',type:'breakfast',cuisine:'Indian',calories:230,protein:12,carbs:34,fat:5,
-recipe:`1. Sprout ½ cup whole moong over 24–36 hours until tails appear.
-2. Mix sprouts with diced tomato, onion, green chilli, chaat masala, lemon juice, and salt.
-3. Toast 2 slices of whole grain bread until crisp.
-4. Pile sprout mixture generously on toast.
-5. Drizzle with green chutney and a little tamarind chutney. Serve immediately.`,
-notes:'Sprouting boosts B vitamins, iron, and enzyme activity. Very filling, high in fibre and protein.'},
+{id:'s005',name:'Sprouts Moong Toast',type:'breakfast',cuisine:'Indian',calories:230,protein:12,carbs:34,fat:5,serving:"2 slices toast with sprouts",
+recipe:`1. Sprout ½ cup whole moong over 24 hours.
+2. Mix sprouts with diced tomato, onion, green chilli, coriander, chaat masala, lime.
+3. Toast 2 slices whole grain bread.
+4. Pile sprout mixture on toast.
+5. Drizzle green and tamarind chutney. Serve immediately.`,
+notes:'Sprouting boosts B vitamins. Very filling.'},
 
-/* ── SOUTH INDIAN BREAKFASTS ── */
-{id:'s006',name:'Idli with Sambar',type:'breakfast',cuisine:'South Indian',calories:255,protein:10,carbs:48,fat:4,
-recipe:`1. Steam idli batter (fermented 2:1 idli rice to urad dal ratio) in greased moulds for 12 min.
-2. For sambar: pressure cook ½ cup toor dal with turmeric until very soft.
-3. In a pot, heat oil, add mustard seeds, curry leaves, dry chilli. Add diced onion, tomato, drumstick or carrot.
-4. Add cooked dal, 1 tsp sambar powder, tamarind extract (1 tbsp), salt. Simmer 15 min until vegetables are soft.
-5. Serve 3 soft idli with a bowl of sambar and green coconut chutney.`,
-notes:'Classic gut-friendly, fermented breakfast. Fermentation boosts bioavailability of iron and B vitamins.'},
+{id:'s006',name:'Idli with Sambar',type:'breakfast',cuisine:'South Indian',calories:255,protein:10,carbs:48,fat:4,serving:"3 idli + 1 cup sambar",
+recipe:`1. Steam fermented idli batter in greased moulds for 12 min.
+2. Sambar: pressure cook ½ cup toor dal with turmeric. 
+3. Heat oil, add mustard seeds, curry leaves, onion, tomato, vegetables of choice.
+4. Add cooked dal, sambar powder, tamarind, salt. Simmer 15 min.
+5. Serve 3 idli with sambar and coconut chutney.`,
+notes:'Fermented breakfast. Gut-friendly and filling.'},
 
-{id:'s007',name:'Pesarattu',type:'breakfast',cuisine:'South Indian',calories:220,protein:13,carbs:30,fat:5,
-recipe:`1. Soak ½ cup whole green moong (with skin) overnight. Drain and grind with ½ tsp ginger, 1 green chilli, salt, and water into a slightly coarse batter.
-2. Add 1 tbsp finely chopped onion and coriander to the batter.
-3. Heat a dosa pan on medium-high. Pour a ladle and spread into a thin, 25 cm crepe.
-4. Drizzle oil around edges. Cook until the bottom is golden and crisp (no need to flip if thin enough).
-5. Serve immediately with ginger chutney or peanut chutney.`,
-notes:'No fermentation needed. Whole moong is iron and folate rich. Traditional Andhra recipe.'},
+{id:'s007',name:'Pesarattu',type:'breakfast',cuisine:'South Indian',calories:220,protein:13,carbs:30,fat:5,serving:"2 large pesarattu",
+recipe:`1. Soak whole green moong overnight. Grind with ginger, green chilli, salt to coarse batter.
+2. Add chopped onion and coriander to batter.
+3. Pour ladle on hot pan, spread thin.
+4. Cook until golden and crisp. No need to flip if thin enough.
+5. Serve with ginger chutney.`,
+notes:'No fermentation needed. High protein Andhra breakfast.'},
 
-{id:'s008',name:'Ragi Dosa',type:'breakfast',cuisine:'South Indian',calories:195,protein:7,carbs:35,fat:4,
-recipe:`1. Mix 1 cup ragi (finger millet) flour with ¼ cup rice flour, ½ cup prepared dosa batter or yoghurt, salt, chopped coriander, grated ginger, and green chilli. Thin with water to dosa batter consistency.
-2. Rest 30 min. Heat a cast-iron dosa pan on high, reduce to medium when ready.
-3. Pour a ladle of batter in the centre and spread outward in a circular motion into a thin crepe.
-4. Drizzle oil around the edges. Cook until the surface looks dry and edges turn crisp (about 2–3 min).
-5. Flip briefly for 30 seconds. Serve with coconut chutney and sambar.`,
-notes:'Ragi is exceptionally high in calcium and has a very low glycaemic index. Excellent for PCOS.'},
+{id:'s008',name:'Ragi Dosa',type:'breakfast',cuisine:'South Indian',calories:195,protein:7,carbs:35,fat:4,serving:"2 dosas",
+recipe:`1. Mix 1 cup ragi flour, ¼ cup rice flour, yoghurt, salt, coriander, ginger, chilli. Thin with water.
+2. Rest 30 min. Heat cast-iron pan on high, reduce to medium.
+3. Pour batter in circular motion, spread very thin.
+4. Drizzle oil around edges. Cook until crisp, 2–3 min.
+5. Serve with coconut chutney and sambar.`,
+notes:'Ragi is very low GI. Excellent for PCOS blood sugar.'},
+
+{id:'s051',name:'Besan Chilla',type:'breakfast',cuisine:'Indian',calories:225,protein:15,carbs:24,fat:7,serving:"3–4 chillas (from 1 cup besan)",
+recipe:`1. Mix 1 cup besan (chickpea flour) with water to smooth, pourable batter.
+2. Add diced onion, green chilli, grated ginger, coriander, carom seeds, salt, ½ tsp cumin. Mix well.
+3. Heat non-stick pan. Pour ladle of batter, spread to a thin 20cm circle.
+4. Drizzle oil around edges. Cook 2 min until golden, flip and cook 1 more min.
+5. Serve with green chutney or yoghurt. Makes 3–4 chillas.`,
+notes:'Chickpea flour is very high in protein. Faster to prep than moong dal chilla.'},
 
 /* ── INDIAN LUNCH / DINNER ── */
-{id:'s009',name:'Chana Masala',type:'lunch',cuisine:'Indian',calories:310,protein:14,carbs:45,fat:8,
-recipe:`1. Heat oil, add bay leaf, green cardamom, cloves, black peppercorns. Add finely diced onion and cook on medium 10 min until deep golden-brown.
-2. Add ginger-garlic paste, cook 2 min. Add 2 pureed tomatoes, cook until oil separates.
-3. Add 1½ tsp coriander powder, 1 tsp cumin powder, 1 tsp chana masala, ½ tsp red chilli powder, ¼ tsp turmeric, salt. Cook spices 3 min.
-4. Add 2 cups boiled chickpeas with ½ cup reserved cooking water. Simmer 15 min.
-5. Finish with dried mango powder (amchur), a pinch of garam masala, and fresh coriander. Serve with jeera rice or roti.`,
-notes:'Protein and fibre powerhouse. Use canned chickpeas to save 1 hour. Tastes better the next day.'},
+{id:'s009',name:'Chana Masala',type:'lunch',cuisine:'Indian',calories:310,protein:14,carbs:45,fat:8,serving:"1 bowl (200g) + 1 cup rice",
+recipe:`1. Heat oil, add whole spices, finely diced onion — cook 10 min until deep golden.
+2. Add ginger-garlic paste, tomato puree. Cook until oil separates.
+3. Add coriander, cumin, chana masala, chilli, salt. Cook 3 min.
+4. Add 2 cups boiled chickpeas with ½ cup water. Simmer 15 min.
+5. Finish with amchur, garam masala, fresh coriander.`,
+notes:'Protein and fibre powerhouse. Use canned chickpeas to save time.'},
 
-{id:'s010',name:'Rajma',type:'dinner',cuisine:'Indian',calories:320,protein:16,carbs:50,fat:7,
-recipe:`1. Soak 1 cup kidney beans overnight. Pressure cook until very tender (4 whistles). Reserve cooking water.
-2. Blend 1 large onion, fry in oil until very dark brown (12 min on medium). Add pureed tomatoes, ginger-garlic paste.
-3. Cook on medium until oil separates at the edges. Add coriander, cumin, kashmiri chilli, garam masala, salt. Cook 3 min.
-4. Add cooked rajma with 1 cup of cooking water. Simmer 20 min. Mash a handful of beans against the pot to thicken.
-5. Finish with kasoori methi and coriander. Serve over jeera rice.`,
-notes:'High in soluble fibre — excellent for cholesterol and blood sugar. Freezes beautifully.'},
+{id:'s010',name:'Rajma',type:'dinner',cuisine:'Indian',calories:320,protein:16,carbs:50,fat:7,serving:"1 bowl rajma (200g) + 1 cup rice",
+recipe:`1. Soak kidney beans overnight. Pressure cook until tender.
+2. Blend one onion and sauté in oil until deep brown (12 min).
+3. Add tomato, ginger-garlic. Cook until oil separates.
+4. Add coriander, cumin, kashmiri chilli, garam masala, salt. Cook 3 min.
+5. Add cooked rajma with cooking water. Simmer 20 min. Mash some beans to thicken.`,
+notes:'PREP NIGHT BEFORE: soak rajma in plenty of water for 8+ hours.'},
 
-{id:'s011',name:'Dal Khichdi',type:'dinner',cuisine:'Indian',calories:340,protein:13,carbs:58,fat:7,
-recipe:`1. Rinse ½ cup rice and ½ cup yellow moong dal together twice. Pressure cook with 3 cups water, salt, turmeric, and a bay leaf — 2 whistles. Allow pressure to release.
-2. Heat 1 tsp ghee in a small pan. Add cumin seeds, asafoetida, diced onion — sauté until golden.
-3. Add grated ginger, green chilli, diced tomato. Cook 3 min. Add ½ tsp red chilli powder and cumin powder.
-4. Pour tadka into the khichdi and mix well. Add hot water to achieve a soft porridge consistency.
-5. Serve with low-fat yoghurt, papad, and pickle.`,
-notes:'Gut-healing, easy to digest. Add seasonal vegetables to the pressure cooker for extra nutrition.'},
+{id:'s011',name:'Dal Khichdi',type:'dinner',cuisine:'Indian',calories:340,protein:13,carbs:58,fat:7,serving:"1 large bowl khichdi (~350g)",
+recipe:`1. Rinse ½ cup rice and ½ cup moong dal. Pressure cook with 3 cups water, salt, turmeric — 2 whistles.
+2. Heat 1 tsp ghee. Add cumin, asafoetida, onion — sauté golden.
+3. Add ginger, chilli, tomato. Cook 3 min. Add spices.
+4. Mix tadka into khichdi. Add hot water for porridge consistency.
+5. Serve with yoghurt and pickle.`,
+notes:'Gut-healing, easy to digest. Add vegetables to the pressure cooker.'},
 
-{id:'s012',name:'Soya Chunk Curry',type:'lunch',cuisine:'Indian',calories:285,protein:22,carbs:20,fat:9,
-recipe:`1. Boil 1 cup mini soya chunks in salted water with turmeric for 10 min. Drain, cool, and squeeze out all moisture.
-2. Heat oil, fry whole spices (bay leaf, cardamom). Add finely diced onion and cook 8 min until golden-brown.
-3. Add ginger-garlic paste, cook 2 min. Add blended tomatoes and cook until oil separates.
-4. Add ground coriander, cumin, chilli powder, garam masala, salt. Cook 3 min.
-5. Add soya chunks and ½ cup water. Simmer 15 min until chunks absorb the gravy.
-6. Finish with kasoori methi and fresh coriander. Serve with roti or rice.`,
-notes:'Highest plant protein per serving in the library. Essential for PCOS. Squeeze chunks well to remove raw flavour.'},
+{id:'s012',name:'Lobia (Black-eye Pea) Curry',type:'lunch',cuisine:'Indian',calories:280,protein:16,carbs:38,fat:8,serving:"1 bowl curry (200g) + 1 cup rice",
+recipe:`1. Soak 1 cup lobia overnight. Pressure cook with turmeric until tender (2 whistles).
+2. Heat oil, sauté finely diced onion 8 min until golden. Add ginger-garlic paste.
+3. Add tomatoes, cook until oil separates. Add coriander, cumin, chilli, garam masala, salt.
+4. Add cooked lobia with some cooking liquid. Simmer 15 min.
+5. Finish with kasoori methi and fresh coriander. Serve with roti or rice.`,
+notes:'PREP: soak lobia overnight. Rich in protein and iron. No soya.'},
 
-{id:'s013',name:'Palak Tofu',type:'dinner',cuisine:'Indian',calories:245,protein:16,carbs:14,fat:12,
-recipe:`1. Blanch 3 cups fresh spinach in boiling water for 1 min. Drain immediately and blend into a smooth bright green puree.
-2. Pan-fry 200g cubed firm tofu in 1 tsp oil until golden on all sides, about 5 min. Set aside.
-3. In the same pan, heat ½ tsp oil. Add cumin seeds, diced onion, ginger-garlic paste. Sauté 5 min.
-4. Add diced tomato, cook 3 min. Add garam masala, coriander powder, salt.
-5. Add spinach puree and ½ cup water. Simmer 8 min. Stir in tofu. Simmer 5 more min.
-6. Optional: add 1 tbsp cashew paste for creaminess. Serve with roti or rice.`,
-notes:'Iron + protein combination. The Vitamin C in tomatoes helps absorb iron from spinach.'},
+{id:'s013',name:'Palak Chana',type:'dinner',cuisine:'Indian',calories:290,protein:15,carbs:32,fat:9,serving:"1 bowl palak chana (250g)",
+recipe:`1. Blanch 3 cups spinach 1 min, then blend to smooth puree.
+2. Drain and rinse 1.5 cups cooked chickpeas (or canned). Lightly pan-fry 2 min. Set aside.
+3. Heat 1 tsp oil. Add cumin, diced onion, ginger-garlic. Sauté 5 min.
+4. Add tomato puree, cook 3 min. Add garam masala, coriander, chilli, salt.
+5. Add spinach puree and water. Simmer 8 min. Stir in chickpeas. Simmer 5 min.`,
+notes:'No soya. Iron-rich spinach, protein from chickpeas. Better macros than palak paneer.'},
 
-{id:'s014',name:'Dal Tadka',type:'lunch',cuisine:'Indian',calories:265,protein:14,carbs:38,fat:7,
-recipe:`1. Pressure cook ½ cup toor dal with 1.5 cups water, turmeric, and a tomato — 3 whistles. Mash lightly.
-2. Simmer dal with salt and adjust water to desired consistency (medium-thick).
-3. For tadka: heat 1 tsp ghee in a small pan until hot. Add cumin seeds — let them splutter.
-4. Add 2 thinly sliced garlic cloves, 1 dried red chilli. Fry 30 sec until garlic turns pale gold.
-5. Pour tadka over hot dal. Add a pinch of kashmiri chilli powder for colour.
-6. Garnish with fresh coriander. Serve with jeera rice or warm roti.`,
-notes:'Toor dal is high in folate. The ghee tadka is small — just enough for flavour, not excess fat.'},
+{id:'s014',name:'Dal Tadka',type:'lunch',cuisine:'Indian',calories:265,protein:14,carbs:38,fat:7,serving:"1 bowl dal + 1 cup rice",
+recipe:`1. Pressure cook ½ cup toor dal with water, turmeric, tomato — 3 whistles.
+2. Simmer dal with salt to desired consistency.
+3. Tadka: heat 1 tsp ghee until hot. Add cumin — let it splutter.
+4. Add sliced garlic, dried red chilli. Fry 30 sec until garlic turns golden.
+5. Pour over hot dal. Garnish with coriander. Serve with rice or roti.`,
+notes:'Classic comfort dal. Toor dal is high in folate.'},
 
-{id:'s015',name:'Masoor Dal',type:'dinner',cuisine:'Indian',calories:250,protein:13,carbs:40,fat:5,
-recipe:`1. Rinse 1 cup red lentils. Cook in 2 cups water with a pinch of turmeric — no pressure cooker needed. Simmer 20 min until very soft.
-2. In a separate pan, sauté diced onion in 1 tsp oil until golden. Add grated ginger, diced tomatoes. Cook 3 min.
-3. Add ground cumin, coriander, red chilli, and salt. Cook 2 min.
-4. Combine with lentils and simmer 10 min together.
-5. Final tadka: heat oil, add mustard seeds, dried red chilli, curry leaves. Pour over dal.
-6. Squeeze lemon at the table. Serve with steamed rice.`,
-notes:'Red lentils are the highest iron lentil variety. Very fast cooking — ready in 30 min from scratch.'},
+{id:'s015',name:'Masoor Dal',type:'dinner',cuisine:'Indian',calories:250,protein:13,carbs:40,fat:5,serving:"1 bowl masoor dal + 1 cup rice",
+recipe:`1. Cook red lentils in 2 cups water with turmeric for 20 min until very soft.
+2. Sauté onion, ginger, tomato in oil.
+3. Add cumin, coriander, chilli, salt. Cook 2 min.
+4. Combine with lentils and simmer 10 min.
+5. Final tadka of mustard seeds, curry leaves, dry chilli. Squeeze lemon at table.`,
+notes:'Highest iron lentil variety. Ready in 30 min from scratch.'},
+
+{id:'s053',name:'Kala Chana Curry',type:'dinner',cuisine:'Indian',calories:300,protein:18,carbs:42,fat:7,serving:"1 bowl curry (200g) + 1 cup rice",
+recipe:`1. Soak kala chana overnight (8 hours). Pressure cook until tender, 4 whistles.
+2. Sauté onion in oil 10 min until dark golden. Add ginger-garlic paste.
+3. Add tomato, cook until oil separates. Add coriander, cumin, chilli, garam masala, amchur.
+4. Add cooked chana with ½ cup cooking water. Simmer 15 min.
+5. Finish with coriander and lemon. Serve with roti.`,
+notes:'PREP NIGHT BEFORE: soak kala chana 8+ hours. Very high protein and iron.'},
+
+{id:'s054',name:'Rajma Brown Rice Bowl',type:'lunch',cuisine:'Indian',calories:380,protein:20,carbs:58,fat:7,serving:"1 bowl rajma + 1 cup brown rice",
+recipe:`1. Soak and cook rajma. Cook 1 cup brown rice (30 min).
+2. Make quick rajma gravy: sauté onion, tomato, ginger-garlic with spices.
+3. Add cooked rajma and simmer 10 min.
+4. Assembly: brown rice bowl topped with rajma, sliced cucumber, yoghurt, coriander.
+5. Drizzle chilli sauce and squeeze lime over the top.`,
+notes:'PREP: soak rajma overnight. Brown rice has better GI than white.'},
+
+{id:'s055',name:'Chana Dal Khichdi',type:'dinner',cuisine:'Indian',calories:345,protein:16,carbs:55,fat:7,serving:"1 large bowl khichdi (~350g)",
+recipe:`1. Soak ½ cup chana dal 1 hour. Rinse ½ cup rice.
+2. Pressure cook chana dal and rice together with 3 cups water, turmeric, salt — 3 whistles.
+3. Heat ghee. Add cumin, whole spices, diced onion — sauté golden.
+4. Add grated ginger, green chilli, tomato. Cook 3 min. Add spices.
+5. Mix into khichdi. Serve with yoghurt.`,
+notes:'Higher protein than regular moong dal khichdi. Soak dal for faster cooking.'},
 
 /* ── SOUTH INDIAN LUNCH/DINNER ── */
-{id:'s016',name:'Vegetable Kootu',type:'dinner',cuisine:'South Indian',calories:215,protein:8,carbs:28,fat:8,
-recipe:`1. Pressure cook ½ cup chana dal until just tender (not mushy). Set aside.
-2. Boil diced raw banana, yam, or any hard vegetable in salted water until soft.
-3. Grind: ½ cup fresh or frozen coconut, ½ tsp cumin, 4 peppercorns into a coarse paste with water.
-4. Combine cooked vegetables, dal, and coconut paste. Simmer together 5 min. Adjust salt.
-5. Tadka: heat coconut oil, add mustard seeds, curry leaves, 2 dried red chillies, and a pinch of urad dal. Pour over kootu.`,
-notes:'Traditional South Indian dry-ish curry. Coconut adds healthy MCT fats. Extremely nutritious.'},
+{id:'s016',name:'Vegetable Kootu',type:'dinner',cuisine:'South Indian',calories:215,protein:8,carbs:28,fat:8,serving:"1 cup kootu + 1 cup rice",
+recipe:`1. Pressure cook ½ cup chana dal until just tender.
+2. Boil diced raw banana or yam in salted water until soft.
+3. Grind ½ cup coconut, ½ tsp cumin, 4 peppercorns to coarse paste.
+4. Combine vegetables, dal, coconut paste. Simmer 5 min.
+5. Tadka: mustard seeds, curry leaves, red chilli, urad dal in coconut oil.`,
+notes:'Traditional South Indian dish. Coconut adds healthy MCT fats.'},
 
-{id:'s017',name:'Sambar Rice',type:'lunch',cuisine:'South Indian',calories:320,protein:11,carbs:58,fat:5,
-recipe:`1. Cook 1 cup white or brown rice until soft. Keep warm.
-2. Pressure cook ½ cup toor dal until very soft with turmeric.
-3. In a pot, heat oil, add mustard seeds, asafoetida, curry leaves. Add onion shallots, tomato, drumstick.
-4. Add cooked dal, sambar powder (2 tsp), tamarind extract (2 tbsp), salt. Simmer 20 min.
-5. Mix sambar into rice until well combined — more sambar than rice for nutrition.
-6. Serve with a spoon of ghee, papad, and pickle.`,
-notes:'One-pot comfort meal. Add more vegetables (carrot, eggplant, radish) for fibre and micronutrients.'},
+{id:'s017',name:'Sambar Rice',type:'lunch',cuisine:'South Indian',calories:320,protein:11,carbs:58,fat:5,serving:"1 plate sambar rice (~300g)",
+recipe:`1. Cook 1 cup white or brown rice until soft.
+2. Pressure cook ½ cup toor dal with turmeric.
+3. Sauté onion, tomato, drumstick in oil with mustard seeds, curry leaves.
+4. Add cooked dal, sambar powder, tamarind, salt. Simmer 20 min.
+5. Mix sambar into rice. Serve with ghee, papad, and pickle.`,
+notes:'Classic comfort one-pot. Load with more vegetables for extra fibre.'},
 
 /* ── THAI ── */
-{id:'s018',name:'Pad Thai Tofu',type:'lunch',cuisine:'Thai',calories:380,protein:18,carbs:52,fat:12,
-recipe:`1. Soak 200g flat rice noodles in warm water for 20 min until pliable. Drain.
-2. Press 200g firm tofu dry, cut into 2cm cubes, fry in 1 tsp oil until golden on all sides. Set aside.
-3. Sauce: mix 2 tbsp tamarind paste, 1 tbsp soy sauce, 1 tsp palm sugar, 1 tsp mushroom sauce.
-4. In a hot wok, stir-fry 2 minced garlic cloves in oil 30 sec. Add noodles and sauce. Toss vigorously for 2 min.
-5. Add tofu, a handful of bean sprouts, and sliced spring onion. Toss 1 min more.
-6. Plate and top with crushed roasted peanuts, fresh lime wedge, and chilli flakes.`,
-notes:'Tamarind is the key flavour — do not substitute with lemon. Wide flat rice noodles give the best texture.'},
+{id:'s018',name:'Pad Thai with Tofu',type:'lunch',cuisine:'Thai',calories:370,protein:18,carbs:52,fat:11,serving:"1 plate pad thai (~300g)",
+recipe:`1. Soak 200g flat rice noodles in warm water 20 min. Drain.
+2. Press 150g firm tofu dry. Dice and pan-fry in 1 tsp oil until golden. Set aside.
+3. Sauce: 2 tbsp tamarind paste, 1 tbsp soy sauce, 1 tsp palm sugar.
+4. Wok on high heat: fry garlic, add noodles and sauce. Toss vigorously 2 min.
+5. Add tofu, bean sprouts, spring onion. Top with crushed peanuts and lime.`,
+notes:'Firm tofu replaces soya. Press it well for a better golden crust.'},
 
-{id:'s019',name:'Thai Green Curry Tofu',type:'dinner',cuisine:'Thai',calories:350,protein:16,carbs:22,fat:20,
-recipe:`1. Heat 1 tsp coconut oil in a deep pan. Add 2 tsp Thai green curry paste, fry 1 min until fragrant.
-2. Pour in ½ can (200 ml) light coconut milk. Bring to a gentle simmer, stirring to combine with paste.
-3. Add sliced courgette, baby corn, and red capsicum. Cook 5 min until slightly tender.
-4. Add pressed cubed tofu (200g) and the remaining coconut milk. Simmer 8 min.
-5. Season with fish-free soy sauce, 1 tsp palm sugar, and fresh lime juice. Add fresh Thai basil leaves off heat.
-6. Serve over jasmine rice or cauliflower rice.`,
-notes:'Use light coconut milk to manage calories. Make sure green curry paste is vegan — check for shrimp paste.'},
+{id:'s019',name:'Thai Green Curry Chickpea',type:'dinner',cuisine:'Thai',calories:340,protein:15,carbs:30,fat:18,serving:"1 bowl curry + 1 cup rice",
+recipe:`1. Heat 1 tsp coconut oil. Fry 2 tsp Thai green curry paste 1 min.
+2. Add ½ can light coconut milk. Bring to simmer.
+3. Add courgette, baby corn, capsicum. Cook 5 min.
+4. Add 1 cup cooked chickpeas and remaining coconut milk. Simmer 8 min.
+5. Season with soy sauce, palm sugar, lime. Add fresh Thai basil off heat.`,
+notes:'Check curry paste is vegan — some contain shrimp paste.'},
 
-{id:'s020',name:'Tom Yum Soup',type:'snack',cuisine:'Thai',calories:145,protein:9,carbs:12,fat:5,
-recipe:`1. Bring 3 cups vegetable broth to a simmer. Add 2 bruised lemongrass stalks, 5 slices galangal, 4 torn kaffir lime leaves.
-2. Simmer 10 min to infuse fully. Remove large aromatics.
-3. Add sliced mushrooms (shiitake or oyster) and 150g cubed silken or firm tofu. Cook 5 min.
-4. Season with lime juice, soy sauce, 1 tsp Thai chilli paste (nam prik pao). Adjust for sourness and heat.
-5. Add a handful of cherry tomatoes halved and sliced spring onions. Taste and serve.`,
-notes:'Extremely low calorie but deeply satisfying. Galangal and lemongrass are potent anti-inflammatories.'},
+{id:'s020',name:'Tom Yum Mushroom Soup',type:'snack',cuisine:'Thai',calories:120,protein:6,carbs:12,fat:4,serving:"2 cups soup",
+recipe:`1. Simmer 3 cups vegetable broth with bruised lemongrass, galangal, kaffir lime leaves — 10 min.
+2. Remove aromatics. Add sliced oyster and button mushrooms.
+3. Add baby corn and cherry tomatoes. Cook 5 min.
+4. Season with lime juice, soy sauce, chilli paste.
+5. Finish with spring onion. Adjust for heat and sourness.`,
+notes:'Anti-inflammatory lemongrass and galangal. Low calorie, very satisfying.'},
 
-{id:'s021',name:'Thai Basil Tofu Rice',type:'dinner',cuisine:'Thai',calories:360,protein:16,carbs:52,fat:10,
-recipe:`1. Cook 1 cup jasmine rice according to packet. Set aside.
-2. Press 200g firm tofu dry. Cut into 2cm cubes. Pan-fry in 1 tsp oil until golden and crisp. Set aside.
-3. In a wok on high heat: fry 4 minced garlic cloves and 3 sliced bird's eye chillies in oil for 30 sec.
-4. Add 1 tbsp soy sauce, 1 tbsp vegan oyster-style sauce, ½ tsp sugar. Add tofu, toss well.
-5. Remove from heat. Add a large handful of fresh Thai basil leaves and toss — they will wilt in residual heat.
-6. Serve over rice. Garnish with fried shallots.`,
-notes:'Thai basil is essential here — Italian basil cannot replicate the flavour. Adjust chilli to your heat preference.'},
+{id:'s021',name:'Thai Basil Mushroom Stir-fry',type:'dinner',cuisine:'Thai',calories:310,protein:9,carbs:52,fat:9,serving:"1 plate stir-fry + 1 cup rice",
+recipe:`1. Cook jasmine rice. Set aside.
+2. Slice 300g mixed oyster and button mushrooms into chunky pieces.
+3. Wok on very high heat: fry 4 garlic cloves and 3 bird's eye chillies in oil 30 sec.
+4. Add mushrooms in one layer. Do not stir for 1 min to get char, then toss.
+5. Add soy sauce, vegan oyster sauce, ½ tsp sugar. Off heat, fold in large handful Thai basil. Serve over rice.`,
+notes:'High heat and mushrooms in one layer gives the wok char. Thai basil is non-negotiable.'},
 
 /* ── CHINESE ── */
-{id:'s022',name:'Kung Pao Tofu',type:'dinner',cuisine:'Chinese',calories:325,protein:18,carbs:22,fat:18,
-recipe:`1. Press and cube 200g firm tofu. Fry in 1 tsp oil until golden on all sides. Set aside.
-2. Sauce: mix 2 tbsp soy sauce, 1 tbsp rice vinegar, 1 tsp dark soy sauce, 1 tsp sesame oil, 1 tsp sugar, 1 tsp cornflour, 1 tbsp chilli bean paste.
-3. In a hot wok: fry 6–8 dried red chillies and ½ tsp Sichuan peppercorns in 1 tbsp oil for 30 sec.
-4. Add 3 minced garlic cloves and 1 tsp grated ginger. Stir 20 sec.
-5. Add tofu and sauce. Toss vigorously on high heat for 2 min.
-6. Add ¼ cup roasted peanuts and diced capsicum. Toss 1 more min. Serve over steamed rice.`,
-notes:'Sichuan peppercorns give the numbing effect that makes this dish unique — do not skip.'},
+{id:'s022',name:'Kung Pao Mushroom & Peanut',type:'dinner',cuisine:'Chinese',calories:295,protein:10,carbs:22,fat:16,serving:"1 bowl stir-fry + 1 cup rice",
+recipe:`1. Slice 300g oyster mushrooms into large chunks. Pan-sear in oil on high until deeply golden — they shrink a lot, so use a large pan. Set aside.
+2. Sauce: 2 tbsp soy sauce, 1 tbsp rice vinegar, 1 tsp sesame oil, 1 tsp sugar, 1 tbsp chilli bean paste.
+3. Wok on high: fry dried red chillies and Sichuan peppercorns 30 sec. Add garlic and ginger.
+4. Add mushrooms and sauce. Toss vigorously 2 min.
+5. Add roasted peanuts and diced capsicum. Serve over rice.`,
+notes:'Sichuan peppercorns give the numbing effect. Oyster mushrooms have a great meaty texture and soak up the sauce beautifully.'},
 
-{id:'s023',name:'Chilli Garlic Tofu Noodles',type:'dinner',cuisine:'Chinese',calories:355,protein:16,carbs:48,fat:12,
-recipe:`1. Cook 100g wheat noodles according to packet. Drain and rinse under cold water.
-2. Sauce: whisk together 2 tbsp soy sauce, 1 tbsp chilli oil, 1 tsp sesame oil, 1 tsp rice vinegar, 1 tsp garlic paste, 1 tsp ginger paste, 1 tsp sugar.
-3. Pan-fry 150g cubed tofu until golden. Blanch bok choy in boiling water 1 min, drain.
-4. Toss warm noodles in sauce until well coated.
-5. Top with tofu and bok choy. Finish with sesame seeds, chilli flakes, and sliced spring onions.`,
-notes:'The chilli oil makes the dish — use a good Sichuan-style one. Works with glass, rice, or wheat noodles.'},
+{id:'s023',name:'Chilli Garlic Mushroom Noodles',type:'dinner',cuisine:'Chinese',calories:330,protein:11,carbs:48,fat:12,serving:"1 bowl noodles (~280g)",
+recipe:`1. Cook 100g wheat noodles. Drain and rinse.
+2. Slice 250g oyster and button mushrooms. Fry on high heat until golden and all water evaporates — about 6 min. Set aside.
+3. Sauce: 2 tbsp soy sauce, 1 tbsp chilli oil, 1 tsp sesame oil, 1 tbsp rice vinegar, garlic paste, ginger, sugar.
+4. Toss hot noodles in sauce. Top with mushrooms and bok choy (blanched 1 min).
+5. Finish with sesame seeds, chilli flakes, spring onion.`,
+notes:'High heat on mushrooms is essential. Let them go golden before stirring.'},
 
-{id:'s024',name:'Glass Noodle Stir-fry',type:'lunch',cuisine:'Chinese',calories:295,protein:10,carbs:48,fat:7,
-recipe:`1. Soak 100g glass noodles (mung bean vermicelli) in hot water 8 min until soft. Drain and snip shorter with scissors.
-2. Julienne 1 carrot, 1 capsicum, ¼ small cabbage, and 3 spring onions.
-3. Heat wok on high with 1 tsp oil. Stir-fry all vegetables with 3 minced garlic cloves for 3 min.
-4. Add noodles, 2 tbsp soy sauce, 1 tsp sesame oil, 1 tsp rice vinegar. Toss continuously for 2 min.
-5. Add 100g edamame or crumbled tofu. Toss 1 more min.
-6. Serve topped with sesame seeds.`,
-notes:'Glass noodles are naturally gluten-free and have a lower GI than wheat noodles. Very light, very nutritious.'},
+{id:'s024',name:'Glass Noodle Stir-fry',type:'lunch',cuisine:'Chinese',calories:295,protein:12,carbs:48,fat:7,serving:"1 bowl noodles (~280g)",
+recipe:`1. Soak 100g glass noodles in hot water 8 min. Drain and snip shorter.
+2. Julienne carrot, capsicum, cabbage. Add shelled edamame for protein.
+3. Wok on high: fry garlic with all vegetables 3 min.
+4. Add noodles, soy sauce, sesame oil, rice vinegar. Toss 2 min.
+5. Top with sesame seeds.`,
+notes:'Glass noodles are naturally gluten-free and lower GI than wheat.'},
 
-{id:'s025',name:'Hakka Noodles Tofu',type:'dinner',cuisine:'Chinese',calories:375,protein:16,carbs:55,fat:10,
-recipe:`1. Boil 100g Hakka noodles until just tender (slightly al dente). Drain, rinse with cold water, and toss with 1 tsp oil.
-2. Julienne 1 carrot, 1 capsicum, ½ cabbage. Slice 3 spring onions. Cube and fry 150g tofu until golden.
-3. Heat a wok on very high heat (this is key). Fry garlic, then add all vegetables. Stir-fry 3 min with constant tossing.
-4. Add noodles and tofu. Season with soy sauce, green chilli sauce, rice vinegar, salt, and white pepper.
-5. Toss everything on high flame. The char at the edges is what you want. Serve immediately.`,
-notes:'The high flame creates restaurant-style "wok hei" (breath of the wok). Do not crowd the pan.'},
+{id:'s025',name:'Hakka Noodles with Tofu',type:'dinner',cuisine:'Chinese',calories:355,protein:14,carbs:52,fat:11,serving:"1 bowl noodles (~300g)",
+recipe:`1. Boil Hakka noodles until al dente. Drain, rinse, toss with 1 tsp oil.
+2. Dice 150g firm tofu. Pan-fry in 1 tsp oil until golden on all sides. Set aside. Julienne carrot, capsicum, cabbage.
+3. High heat wok: fry garlic, add vegetables. Stir-fry 3 min with constant tossing.
+4. Add noodles and tofu. Season with soy sauce, chilli sauce, rice vinegar, white pepper.
+5. Toss on high flame. Serve immediately.`,
+notes:'High flame creates wok char. Press tofu dry before frying for best crust.'},
 
-{id:'s026',name:'Steamed Dumplings (Tofu-Veg)',type:'snack',cuisine:'Chinese',calories:195,protein:11,carbs:28,fat:5,
-recipe:`1. Filling: mix 150g crumbled firm tofu, 1 cup finely chopped cabbage (squeezed very dry), 1 tbsp soy sauce, 1 tsp sesame oil, 1 tsp grated ginger, 1 sliced spring onion, 1 tbsp cornflour.
-2. Place 1 heaped teaspoon filling in centre of each dumpling wrapper. Moisten edges with water, fold and pleat to seal.
-3. Line a bamboo steamer with baking paper. Place dumplings without touching.
-4. Steam over boiling water for 10–12 min until wrappers are translucent.
-5. Dipping sauce: soy sauce + rice vinegar + chilli oil + sesame oil + julienned ginger.`,
-notes:'Make a large batch, freeze unsteamed. Cook straight from frozen at 15 min. Great meal-prep snack.'},
+{id:'s026',name:'Mushroom & Edamame Dumplings',type:'snack',cuisine:'Chinese',calories:180,protein:10,carbs:26,fat:5,serving:"6 dumplings",
+recipe:`1. Finely chop 200g button mushrooms. Cook in a dry pan on high heat, stirring often, until all moisture evaporates and mushrooms are dry — 8 min. Cool.
+2. Mix mushrooms with ½ cup shelled edamame (roughly mashed), ginger, soy sauce, sesame oil, cornflour.
+3. Place 1 tsp filling in dumpling wrapper. Moisten edges, fold and pleat to seal.
+4. Line bamboo steamer with baking paper. Steam over boiling water 10–12 min until translucent.
+5. Dipping sauce: soy sauce + rice vinegar + chilli oil + grated ginger.`,
+notes:'Button mushrooms work perfectly here — finely chopped and dried out so the filling is never soggy. Make a batch and freeze unsteamed. Steam direct from frozen 15 min.'},
 
-{id:'s027',name:'Tofu Fried Rice',type:'lunch',cuisine:'Chinese',calories:365,protein:14,carbs:56,fat:10,
-recipe:`1. Use cold, day-old rice — this is essential. Fresh rice makes the dish clumpy.
-2. Press 150g firm tofu dry. Crumble into small pieces and fry in oil until golden. Set aside.
-3. In a hot wok with 1 tsp oil, fry 1 cup frozen peas, corn, and diced carrot for 2 min.
-4. Push vegetables to the side. Add rice in the empty space, pressing flat. Cook undisturbed 1 min for a light char.
-5. Add tofu, 2 tbsp soy sauce, 1 tsp sesame oil, white pepper. Toss everything together vigorously.
-6. Finish with sliced spring onion and a drizzle of chilli oil.`,
-notes:'Egg-free version uses extra tofu for protein. Cold rice is non-negotiable for the right texture.'},
+{id:'s027',name:'Edamame & Pea Fried Rice',type:'lunch',cuisine:'Chinese',calories:340,protein:14,carbs:56,fat:8,serving:"1 plate fried rice (~280g)",
+recipe:`1. Use cold day-old rice.
+2. Wok on high: fry frozen edamame (shelled), peas, corn, diced carrot 2 min.
+3. Add rice, press flat and fry without stirring 1 min to create char.
+4. Season with soy sauce, sesame oil, white pepper. Toss vigorously on high.
+5. Top with toasted sesame seeds and spring onion. Serve immediately.`,
+notes:'Cold rice is essential. Edamame gives protein without soya chunks.'},
 
 /* ── JAPANESE ── */
-{id:'s028',name:'Miso Edamame Bowl',type:'lunch',cuisine:'Japanese',calories:295,protein:18,carbs:38,fat:9,
-recipe:`1. Cook 1 cup Japanese short-grain or brown rice according to packet. Fluff with a fork.
-2. Miso soup: dissolve 1 tbsp white shiro miso in 2 tbsp warm (not boiling) water. Stir into 400 ml hot water. Add cubed silken tofu and dried wakame (rehydrated 5 min).
-3. Boil ½ cup shelled edamame in salted water 3 min. Drain.
-4. Arrange rice in a bowl. Add edamame, thinly sliced cucumber, and pickled ginger alongside.
-5. Pour miso soup in a small bowl. Top rice bowl with sesame seeds and nori strips. Drizzle with soy sauce.`,
-notes:'Fermented miso is probiotic — never boil it after adding, as this kills the beneficial bacteria.'},
+{id:'s028',name:'Silken Tofu Miso Bowl',type:'lunch',cuisine:'Japanese',calories:290,protein:16,carbs:38,fat:8,serving:"1 bowl tofu rice (~300g)",
+recipe:`1. Cook 1 cup short-grain rice. Fluff and set aside.
+2. Slice 150g button or oyster mushrooms. Sauté in 1 tsp sesame oil on high heat until golden and fragrant.
+3. Miso broth: dissolve 1 tbsp white miso in 400ml hot (not boiling) water. Add wakame seaweed.
+4. Boil ½ cup shelled edamame in salted water 3 min.
+5. Bowl: rice, mushrooms, edamame, sliced cucumber, pickled ginger. Pour miso broth alongside.`,
+notes:'Fermented miso is probiotic. Never boil it — kills the beneficial bacteria.'},
 
-{id:'s029',name:'Tofu Donburi',type:'dinner',cuisine:'Japanese',calories:385,protein:20,carbs:52,fat:10,
-recipe:`1. Cook Japanese short-grain rice (1 cup). Keep warm.
-2. Press and slice 200g firm tofu into 1cm planks. Dust both sides lightly in cornflour.
-3. Pan-fry in 1 tsp oil until golden and crisp on each side (3 min per side). Set aside.
-4. Teriyaki sauce: simmer 3 tbsp soy sauce, 2 tbsp mirin, 1 tbsp rice wine, 1 tsp sugar, ½ tsp cornflour in a small pan until glossy and slightly thick.
-5. Place rice in a deep bowl. Lay tofu slices on top. Spoon sauce generously over tofu.
-6. Garnish with sesame seeds, sliced spring onion, and pickled red ginger (beni shoga).`,
-notes:'The cornflour crust keeps tofu crisp even after saucing. Mirin is essential for authentic flavour.'},
+{id:'s029',name:'Teriyaki Tofu Donburi',type:'dinner',cuisine:'Japanese',calories:375,protein:16,carbs:52,fat:12,serving:"1 donburi bowl (~350g)",
+recipe:`1. Cook Japanese short-grain rice.
+2. Press 200g firm tofu under heavy weight 20 min. Slice into 2cm slabs. Dust lightly in cornflour.
+3. Pan-fry tofu in 1 tsp oil until golden and crisp on both sides — 4 min per side.
+4. Teriyaki sauce: simmer 3 tbsp soy sauce, 2 tbsp mirin, 1 tbsp rice wine, 1 tsp sugar until glossy. Spoon over tofu.
+5. Place rice in deep bowl. Top with teriyaki tofu, sesame seeds, spring onion, pickled ginger.`,
+notes:'Pressing and dusting tofu in cornflour gives a beautiful crust. No soya chunks.'},
 
-{id:'s030',name:'Zaru Soba',type:'lunch',cuisine:'Japanese',calories:280,protein:12,carbs:52,fat:3,
-recipe:`1. Boil 100g 100% buckwheat soba noodles in unsalted water for exactly 4 min. Drain and rinse immediately under cold running water until completely chilled.
-2. Arrange noodles on a bamboo mat or plate in a small nest.
-3. Dipping sauce (mentsuyu): mix 3 tbsp soy sauce, 2 tbsp mirin, 1 tbsp kombu dashi stock. Serve chilled in a small cup.
-4. Condiments: ½ tsp wasabi paste, 2 tbsp sliced spring onion, 1 tsp grated fresh ginger.
-5. Dip cold noodles into sauce with condiments. Pair with a side of boiled edamame.`,
-notes:'Buckwheat is rich in rutin, quercetin, and magnesium — all beneficial for PCOS and inflammation.'},
+{id:'s030',name:'Zaru Soba',type:'lunch',cuisine:'Japanese',calories:280,protein:12,carbs:52,fat:3,serving:"1 serving soba noodles (~200g)",
+recipe:`1. Boil 100g 100% buckwheat soba 4 min. Rinse immediately under cold water until chilled.
+2. Arrange on plate or bamboo mat.
+3. Dipping sauce: 3 tbsp soy sauce, 2 tbsp mirin, 1 tbsp kombu dashi. Serve chilled.
+4. Condiments: wasabi, sliced spring onion, grated ginger.
+5. Dip cold noodles into sauce. Pair with boiled edamame for protein.`,
+notes:'Buckwheat is rich in rutin and quercetin — anti-inflammatory.'},
 
-{id:'s031',name:'Edamame Miso Soup',type:'snack',cuisine:'Japanese',calories:80,protein:8,carbs:6,fat:3,
-recipe:`1. Bring 400 ml water to hot but below boiling (about 70°C — steam rising but no bubbles).
-2. Dissolve 1.5 tbsp white miso paste in 2 tbsp of the hot water first (prevents lumps). Stir into the pot.
-3. Add ½ cup shelled edamame and 100g cubed silken tofu.
-4. Add a pinch of dried wakame seaweed (rehydrates in 2 min).
-5. Warm gently 2 min — do not let it boil. Ladle into bowls and top with sliced spring onion.`,
-notes:'Never boil miso — the probiotics are heat-sensitive. A warming, gut-friendly snack.'},
+{id:'s031',name:'Silken Tofu Miso Soup',type:'snack',cuisine:'Japanese',calories:70,protein:5,carbs:8,fat:2,serving:"1 cup miso soup",
+recipe:`1. Bring 400ml water to 70°C (steam rising, no boil).
+2. Dissolve 1.5 tbsp white miso in 2 tbsp warm water. Stir into pot.
+3. Add 3–4 thinly sliced button mushrooms, wakame seaweed, sliced spring onion.
+4. Warm gently 2 min — do not boil.
+5. Serve immediately with nori strips on top.`,
+notes:'Never boil miso — kills the probiotics. Warming gut-friendly snack.'},
 
 /* ── ITALIAN ── */
-{id:'s032',name:'Pasta Arrabbiata Tofu',type:'dinner',cuisine:'Italian',calories:390,protein:18,carbs:58,fat:11,
-recipe:`1. Cook 80g penne in salted water until al dente. Reserve ½ cup pasta water.
-2. Pan-fry 150g cubed firm tofu in 1 tsp olive oil until golden. Set aside.
-3. In the same pan, gently fry 4 thinly sliced garlic cloves in 2 tsp olive oil on low for 2 min.
-4. Add ½–1 tsp chilli flakes (adjust to heat preference). Cook 30 sec. Add 1 can crushed tomatoes.
-5. Simmer sauce 15 min on low, stirring occasionally. Season with salt and a pinch of sugar.
-6. Add pasta, tofu, and a splash of pasta water. Toss well. Finish with fresh basil and a drizzle of extra-virgin olive oil.`,
-notes:'"Arrabbiata" means angry — the chilli is the star. No cream, keeps it lean. Parmesan substitute: nutritional yeast.'},
+{id:'s032',name:'Pasta Arrabbiata Chickpea',type:'dinner',cuisine:'Italian',calories:385,protein:16,carbs:60,fat:10,serving:"1 plate pasta (~300g)",
+recipe:`1. Cook 80g penne until al dente. Reserve ½ cup pasta water.
+2. Drain and rinse 1 cup canned chickpeas. Pat dry and fry in olive oil until golden. Set aside.
+3. Gently fry 4 sliced garlic cloves in 2 tsp olive oil. Add ½ tsp chilli flakes. Add 1 can crushed tomatoes.
+4. Simmer sauce 15 min. Season with salt and sugar.
+5. Toss pasta, chickpeas, and a splash of pasta water in sauce. Finish with fresh basil.`,
+notes:'Chickpeas add protein and fibre. Cannellini beans also work well.'},
 
-{id:'s033',name:'Pesto Pasta',type:'lunch',cuisine:'Italian',calories:420,protein:14,carbs:56,fat:17,
-recipe:`1. Cook 80g pasta (rigatoni, fusilli, or spaghetti) until al dente. Reserve ½ cup pasta water.
-2. Pesto: blend 2 packed cups fresh basil, 3 tbsp walnuts or pine nuts, 2 garlic cloves, 3 tbsp extra-virgin olive oil, salt. Add 2 tbsp nutritional yeast (replaces parmesan).
+{id:'s033',name:'Pesto Pasta',type:'lunch',cuisine:'Italian',calories:420,protein:14,carbs:56,fat:17,serving:"1 plate pesto pasta (~300g)",
+recipe:`1. Cook 80g pasta until al dente. Reserve ½ cup pasta water.
+2. Pesto: blend 2 cups fresh basil, 2 tbsp walnuts, 2 garlic cloves, 3 tbsp olive oil, salt, 2 tbsp nutritional yeast.
 3. Halve 8 cherry tomatoes.
-4. Drain hot pasta and immediately toss with pesto and 3–4 tbsp pasta water to loosen.
-5. Fold in cherry tomatoes. Serve topped with extra walnuts and a few basil leaves.`,
-notes:'Nutritional yeast adds umami and B vitamins. Use whole wheat pasta for better blood sugar response.'},
+4. Toss hot pasta with pesto and pasta water to loosen.
+5. Add cherry tomatoes and extra walnuts. Top with fresh basil.`,
+notes:'Nutritional yeast replaces parmesan. Use whole wheat pasta for better blood sugar response.'},
 
-{id:'s034',name:'Aglio e Olio Tofu',type:'dinner',cuisine:'Italian',calories:400,protein:18,carbs:52,fat:15,
-recipe:`1. Cook 80g spaghetti until al dente. Reserve ¾ cup pasta water before draining.
-2. Press and cube 150g firm tofu. Pan-fry until golden and crisp. Set aside.
-3. In a wide pan, heat 3 tsp quality extra-virgin olive oil on low. Add 6 thinly sliced garlic cloves and ½ tsp red chilli flakes. Cook slowly 5 min until garlic turns pale gold — never brown.
-4. Add ½ cup pasta water to the garlic oil — it will sizzle. Add drained pasta and toss vigorously to emulsify.
-5. Add tofu, a large handful of flat-leaf parsley, salt, and pepper. Toss and serve immediately.`,
-notes:'The emulsified pasta water + olive oil is the sauce. Simple, fast, and absolutely delicious.'},
+{id:'s034',name:'Aglio e Olio Cannellini',type:'dinner',cuisine:'Italian',calories:395,protein:16,carbs:58,fat:13,serving:"1 plate pasta (~300g)",
+recipe:`1. Cook 80g spaghetti until al dente. Reserve ¾ cup pasta water.
+2. Drain and rinse 1 cup cannellini beans.
+3. Gently fry 6 sliced garlic cloves and ½ tsp chilli flakes in 3 tsp olive oil on low until golden.
+4. Add pasta water — sizzle. Add drained pasta and toss vigorously to emulsify.
+5. Add cannellini beans, flat-leaf parsley, salt, pepper. Serve immediately.`,
+notes:'Emulsified pasta water and olive oil is the sauce. Simple and protein-packed.'},
 
-{id:'s035',name:'Minestrone Soup',type:'lunch',cuisine:'Italian',calories:205,protein:9,carbs:34,fat:5,
-recipe:`1. Sauté finely diced onion, 3 garlic cloves, 1 carrot, and 2 celery sticks in 1 tsp olive oil for 5 min.
-2. Add 1 diced courgette, 1 cup green beans (halved), 1 can diced tomatoes, and 1 litre vegetable stock.
-3. Add 1 tsp dried Italian herbs, salt, and black pepper. Bring to a boil, reduce and simmer 20 min.
-4. Add ½ cup cooked cannellini beans and 40g small pasta (ditalini). Cook 8 more min.
-5. Stir in a handful of fresh basil. Taste and adjust seasoning. Serve with crusty whole grain bread.`,
-notes:'Load with any seasonal vegetables. Very low calorie, very filling from the beans and pasta.'},
+{id:'s035',name:'Minestrone Soup',type:'lunch',cuisine:'Italian',calories:205,protein:9,carbs:34,fat:5,serving:"2 cups soup",
+recipe:`1. Sauté onion, garlic, carrot, celery in 1 tsp olive oil 5 min.
+2. Add courgette, green beans, canned tomatoes, 1 litre vegetable stock.
+3. Add 1 tsp Italian herbs, salt, pepper. Simmer 20 min.
+4. Add ½ cup cooked cannellini beans and 40g small pasta. Cook 8 more min.
+5. Stir in fresh basil. Serve with whole grain bread.`,
+notes:'Load with any seasonal vegetables. Very filling from beans and pasta.'},
 
 /* ── MEXICAN ── */
-{id:'s036',name:'Black Bean Tacos',type:'dinner',cuisine:'Mexican',calories:360,protein:15,carbs:52,fat:10,
-recipe:`1. Warm 4 small corn tortillas directly on a gas flame or dry pan — 20 sec each side until pliable and lightly charred.
-2. Filling: heat 1 cup canned black beans with 1 tsp cumin, ½ tsp smoked paprika, garlic powder, salt, and lime juice. Mash lightly.
-3. Fresh tomato salsa: dice 2 tomatoes, ½ red onion, 1 green chilli, coriander, lime, salt.
-4. Toppings: shredded cabbage, sliced avocado, pickled jalapeño, fresh coriander.
-5. Assemble: spread beans on tortillas, layer toppings, squeeze lime over everything.`,
-notes:'Black beans are a PCOS superfood — high in soluble fibre and magnesium. Use corn tortillas for lower GI.'},
+{id:'s036',name:'Black Bean Tacos',type:'dinner',cuisine:'Mexican',calories:360,protein:15,carbs:52,fat:10,serving:"2 tacos",
+recipe:`1. Warm corn tortillas directly on gas flame until pliable and lightly charred.
+2. Heat 1 cup black beans with cumin, smoked paprika, garlic, salt, lime. Mash lightly.
+3. Fresh salsa: diced tomato, red onion, coriander, lime, salt.
+4. Toppings: shredded cabbage, sliced avocado, pickled jalapeño.
+5. Assemble: beans on tortillas, layer toppings, squeeze lime over everything.`,
+notes:'Black beans are high in soluble fibre and magnesium — excellent for PCOS.'},
 
-{id:'s037',name:'Tofu Burrito Bowl',type:'lunch',cuisine:'Mexican',calories:425,protein:22,carbs:55,fat:14,
-recipe:`1. Marinate 200g cubed firm tofu in lime juice, 1 tsp cumin, 1 tsp smoked paprika, garlic powder, chilli flakes, 1 tsp oil, salt — 20 min. Bake at 200°C for 25 min or pan-fry until crisp.
-2. Cook rice. While warm, mix in chopped fresh coriander and lime juice (cilantro-lime rice).
-3. Warm 1 cup black beans with cumin, garlic, salt, and lime.
-4. Toppings: halved cherry tomatoes, sliced avocado, shredded romaine, roasted corn.
-5. Build the bowl: rice base → beans → tofu → toppings. Dress with salsa, lime, and a spoon of low-fat yoghurt.`,
-notes:'All components store separately for 3 days — ideal meal prep. Very high protein, very filling.'},
+{id:'s037',name:'Black Bean Burrito Bowl',type:'lunch',cuisine:'Mexican',calories:415,protein:18,carbs:58,fat:12,serving:"1 burrito bowl (~380g)",
+recipe:`1. Marinate 1 cup soya chunks in lime, cumin, smoked paprika, garlic, oil, salt — 20 min. Bake 200°C 20 min or pan-fry.
+2. Cook rice and stir in fresh coriander and lime juice.
+3. Warm black beans with cumin, garlic, salt, lime.
+4. Toppings: cherry tomatoes, avocado, shredded lettuce, roasted corn.
+5. Build bowl: rice → beans → soya → toppings. Dress with salsa, lime, yoghurt.`,
+notes:'Meal-prep friendly. All components store separately for 3 days.'},
 
-{id:'s038',name:'Tofu Fajitas',type:'dinner',cuisine:'Mexican',calories:345,protein:19,carbs:38,fat:14,
-recipe:`1. Slice 200g firm tofu into strips. Marinate 20 min in lime juice, cumin, smoked paprika, garlic, chilli powder, oil, and salt.
-2. Slice 3 bell peppers (red, yellow, green) and 1 large red onion into long strips.
-3. In a cast-iron pan or heavy skillet on high heat, cook tofu strips until nicely charred at edges. Set aside.
-4. In the same pan, cook peppers and onion on high with just a little oil until they char and soften slightly.
-5. Warm flour tortillas. Assemble with tofu, peppers, guacamole, pico de gallo, and fresh coriander.`,
-notes:'The char at high heat is the key — do not crowd the pan or the vegetables will steam instead of char.'},
+{id:'s038',name:'Soya Chunk Fajitas',type:'dinner',cuisine:'Mexican',calories:340,protein:22,carbs:38,fat:12,serving:"2 fajitas",
+recipe:`1. Soak 100g soya chunks, squeeze dry. Marinate in lime, cumin, paprika, garlic, chilli, oil, salt — 20 min.
+2. Slice 3 mixed bell peppers and 1 large red onion into strips.
+3. Pan-fry soya chunks on high until charred at edges. Set aside.
+4. In same pan, cook peppers and onion on high until slightly charred.
+5. Serve on warm tortillas with guacamole, pico de gallo, coriander.`,
+notes:'The char on high heat is key. Do not crowd the pan.'},
 
 /* ── SNACKS ── */
-{id:'s039',name:'Sprouts Chaat',type:'snack',cuisine:'Indian',calories:155,protein:10,carbs:22,fat:3,
-recipe:`1. Use 1 cup mixed sprouted beans (green moong, black chana, and/or moth beans). Use raw for maximum nutrition or briefly steam 2 min if preferred.
-2. Combine with finely diced tomato, red onion, cucumber, green chilli, and fresh coriander.
-3. Dress with 1 tsp chaat masala, ½ tsp roasted cumin powder, black salt, fresh lime juice, and a drizzle of tamarind chutney.
-4. Toss well and taste for seasoning. Serve immediately while the sprouts are still crunchy.
-5. Optional: top with fine sev for crunch (adds ~30 cal).`,
-notes:'Sprouting boosts folate, iron, and enzyme activity by 200–400%. Perfect PCOS snack.'},
+{id:'s039',name:'Sprouts Chaat',type:'snack',cuisine:'Indian',calories:155,protein:10,carbs:22,fat:3,serving:"1 cup sprouts chaat",
+recipe:`1. Use 1 cup mixed sprouted beans (moong, black chana, matki). Raw or briefly steamed.
+2. Combine with diced tomato, red onion, cucumber, green chilli, fresh coriander.
+3. Dress with chaat masala, roasted cumin, black salt, lime, tamarind chutney.
+4. Toss well. Serve immediately while sprouts are still crunchy.
+5. Optional: top with fine sev.`,
+notes:'Sprouting boosts folate, iron, and enzyme activity. Perfect PCOS snack.'},
 
-{id:'s040',name:'Sattu Drink (Savoury)',type:'snack',cuisine:'Indian',calories:130,protein:8,carbs:22,fat:2,
-recipe:`1. Add 3 tablespoons roasted chana sattu to a tall glass.
-2. Add a pinch of black salt, ¼ tsp roasted cumin powder, ½ tsp chaat masala, and juice of half a lemon.
-3. Pour in 300 ml cold water and stir vigorously until fully dissolved (or blend 30 sec for extra smoothness).
-4. Taste — add more lemon or salt as desired. Top up with a few ice cubes.
-5. For a sweeter version: omit salt and cumin, add a teaspoon of jaggery powder instead.`,
-notes:'Bihar\'s ancient protein drink. Very filling, high in complex carbs and protein. Ideal pre-workout snack.'},
+{id:'s040',name:'Sattu Drink (Savoury)',type:'snack',cuisine:'Indian',calories:130,protein:8,carbs:22,fat:2,serving:"1 glass sattu drink (30g sattu)",
+recipe:`1. Add 3 tbsp roasted chana sattu to a tall glass.
+2. Add black salt, cumin powder, chaat masala, lemon juice.
+3. Pour in 300ml cold water and stir vigorously until dissolved.
+4. Adjust seasoning. Top with ice and mint.
+5. For sweet: add jaggery and skip the spices.`,
+notes:'Bihar\'s ancient protein drink. Very filling as a snack.'},
 
-{id:'s041',name:'Roasted Chana',type:'snack',cuisine:'Indian',calories:120,protein:7,carbs:18,fat:2,
-recipe:`1. For home-roasted version: soak 1 cup chickpeas overnight. Drain and dry completely on a towel.
-2. Spread on a baking tray. Drizzle with ½ tsp oil, toss to coat.
-3. Roast at 200°C for 35–40 min, shaking the tray every 15 min, until very crisp and deep golden.
-4. While still warm, toss with chaat masala, black salt, red chilli powder, and lime juice.
-5. Cool completely before storing in an airtight jar — they crisp up further as they cool.`,
-notes:'High-satiety snack rich in fibre and protein. Use store-bought roasted chana for convenience.'},
+{id:'s041',name:'Roasted Chana',type:'snack',cuisine:'Indian',calories:120,protein:7,carbs:18,fat:2,serving:"30g roasted chana",
+recipe:`1. Soak 1 cup chickpeas overnight. Drain and dry completely.
+2. Toss with ½ tsp oil on a baking tray.
+3. Roast at 200°C for 35–40 min, shaking every 15 min, until very crisp.
+4. While warm, toss with chaat masala, black salt, chilli, lime.
+5. Cool before storing in airtight jar.`,
+notes:'High-satiety snack. Great for travel.'},
 
-{id:'s042',name:'Makhana (Foxnuts)',type:'snack',cuisine:'Indian',calories:100,protein:4,carbs:18,fat:1,
-recipe:`1. Heat a wide dry pan on medium. Add 1 cup makhana in a single layer.
-2. Roast, stirring continuously, for 5–7 min until they puff slightly more, turn golden, and become crisp.
-3. Remove immediately from heat. Add 1 tsp ghee or coconut oil and toss quickly.
-4. Season with pink salt, ½ tsp cumin powder, ¼ tsp red chilli powder, and chaat masala.
-5. Cool completely before eating — they become crisper as they cool.`,
-notes:'Very low glycaemic index. High in magnesium — critical for PCOS insulin sensitivity. Low calorie, very satisfying.'},
+{id:'s042',name:'Makhana (Foxnuts)',type:'snack',cuisine:'Indian',calories:100,protein:4,carbs:18,fat:1,serving:"30g makhana (1 cup puffed)",
+recipe:`1. Heat dry pan on medium. Add 1 cup makhana.
+2. Roast stirring constantly 5–7 min until crisp and golden.
+3. Remove from heat. Add 1 tsp ghee and toss quickly.
+4. Season with pink salt, cumin, chilli, chaat masala.
+5. Cool completely before eating.`,
+notes:'Very low GI. High in magnesium — important for PCOS insulin sensitivity.'},
 
-{id:'s043',name:'Chaas (Spiced Buttermilk)',type:'snack',cuisine:'Indian',calories:60,protein:3,carbs:6,fat:2,
-recipe:`1. Whisk ½ cup low-fat yoghurt in a tall glass until completely smooth with no lumps.
-2. Add 1 cup cold water and whisk again until frothy.
-3. Season with roasted cumin powder, dried mint, black salt, and a pinch of asafoetida.
-4. For digestive version: add ½ tsp freshly grated ginger and 3–4 curry leaves.
-5. Serve cold over ice in summer or at room temperature year-round.`,
-notes:'Post-lunch digestive drink. Very low calorie. Probiotic benefit. Excellent for PCOS gut health.'},
+{id:'s043',name:'Chaas (Spiced Buttermilk)',type:'snack',cuisine:'Indian',calories:60,protein:3,carbs:6,fat:2,serving:"1 glass (250ml)",
+recipe:`1. Whisk ½ cup low-fat yoghurt until smooth. Add 1 cup cold water. Whisk frothy.
+2. Season with roasted cumin, dried mint, black salt, asafoetida.
+3. For digestive version: add ½ tsp grated ginger and curry leaves.
+4. Serve cold over ice or at room temperature.`,
+notes:'Post-lunch digestive. Probiotic benefit. Very low calorie.'},
 
-{id:'s044',name:'Edamame (Salted)',type:'snack',cuisine:'Japanese',calories:120,protein:11,carbs:10,fat:5,
-recipe:`1. Bring a large pot of water to boil with 1 tsp salt.
-2. Add frozen edamame pods. Boil 3–4 min until bright green and just tender.
-3. Drain immediately. Sprinkle generously with flaky sea salt while still hot.
-4. Optional: toss with a few drops of sesame oil, sesame seeds, and chilli flakes.
-5. Eat by squeezing each pod so the beans pop into your mouth.`,
-notes:'One of the best plant-based snacks. High in complete protein, isoflavones, and folate.'},
+{id:'s044',name:'Edamame (Salted)',type:'snack',cuisine:'Japanese',calories:120,protein:11,carbs:10,fat:5,serving:"1 cup edamame (shelled)",
+recipe:`1. Boil salted water. Add frozen edamame pods, boil 3–4 min until bright green.
+2. Drain immediately. Sprinkle with flaky sea salt while hot.
+3. Optional: toss with sesame oil, sesame seeds, chilli flakes.
+4. Eat by squeezing beans out of pods.`,
+notes:'One of the best plant-based snacks. High in complete protein and isoflavones.'},
 
-{id:'s045',name:'Dates and Walnuts',type:'snack',cuisine:'Other',calories:145,protein:3,carbs:24,fat:6,
-recipe:`1. Select 3 large Medjool dates. Slice each lengthwise and remove the pit.
-2. Press the date open slightly to create a pocket.
-3. Stuff each date with 2 walnut halves, pressing gently so they sit inside.
-4. Optional: dust with a tiny pinch of cinnamon or cardamom for warmth.
-5. Serve immediately or prepare ahead and store chilled for up to 2 days.`,
-notes:'Natural iron and B vitamins from dates. Omega-3 ALA from walnuts reduces inflammation. Satisfying sweet-fatty snack.'},
+{id:'s045',name:'Dates and Walnuts',type:'snack',cuisine:'Other',calories:145,protein:3,carbs:24,fat:6,serving:"4 dates + 4 walnut halves",
+recipe:`1. Select 3 large Medjool dates. Pit each and press open.
+2. Stuff each with 2 walnut halves.
+3. Optional: pinch of cinnamon or cardamom.
+4. Serve immediately or chill up to 2 days.`,
+notes:'Iron from dates. Omega-3 from walnuts. Satisfying sweet-fatty snack.'},
 
-{id:'s046',name:'Sweet Potato Chaat',type:'snack',cuisine:'Indian',calories:170,protein:3,carbs:36,fat:2,
-recipe:`1. Boil 1 medium sweet potato (about 200g) in salted water until just tender — knife should go in with slight resistance. Cool, peel, and cut into 2cm cubes.
-2. In a bowl, combine sweet potato with ¼ diced red onion, ¼ cucumber (cubed), and fresh coriander.
-3. Season generously with chaat masala, roasted cumin powder, black salt, red chilli powder, and lime juice.
-4. Add 1 tbsp tamarind chutney and 1 tbsp green coriander chutney. Toss gently.
-5. Serve immediately — do not dress in advance.`,
-notes:'Sweet potato is rich in beta-carotene and fibre. Anti-inflammatory. Moderate GI but very high nutrition density.'},
+{id:'s046',name:'Sweet Potato Chaat',type:'snack',cuisine:'Indian',calories:170,protein:3,carbs:36,fat:2,serving:"1 medium sweet potato (~150g)",
+recipe:`1. Boil 1 medium sweet potato until just tender. Cool, peel, cube.
+2. Combine with diced red onion, cucumber, coriander.
+3. Season with chaat masala, cumin, black salt, chilli, lime.
+4. Add tamarind and green coriander chutney. Toss gently.
+5. Serve immediately.`,
+notes:'Sweet potato is rich in beta-carotene and fibre. Anti-inflammatory.'},
 
-{id:'s047',name:'Guacamole with Rice Crackers',type:'snack',cuisine:'Mexican',calories:195,protein:3,carbs:22,fat:11,
-recipe:`1. Halve and pit 1 ripe avocado. Scoop flesh into a bowl. Mash with a fork until chunky-smooth.
-2. Add juice of 1 lime, salt, 2 tbsp finely diced red onion, ½ green chilli (deseeded), 2 tbsp fresh coriander. Mix.
-3. Optional: fold in 1 small diced tomato (deseeded to avoid watering it down).
-4. Taste for salt, lime, and heat. Adjust.
-5. Serve with 8–10 plain rice crackers. To store: press cling film directly onto surface to slow browning.`,
-notes:'Avocado\'s monounsaturated fat actively raises HDL (good cholesterol). Use rice crackers over fried chips.'},
+{id:'s047',name:'Guacamole with Rice Crackers',type:'snack',cuisine:'Mexican',calories:195,protein:3,carbs:22,fat:11,serving:"1 avocado + 6 rice crackers",
+recipe:`1. Mash 1 ripe avocado. Keep slightly chunky.
+2. Add lime, salt, diced red onion, green chilli, coriander. Mix.
+3. Optional: fold in diced deseeded tomato.
+4. Serve with 8–10 plain rice crackers.
+5. Press cling film directly on surface to slow browning.`,
+notes:'Avocado\'s monounsaturated fat raises HDL (good cholesterol).'},
 
-{id:'s048',name:'Bruschetta',type:'snack',cuisine:'Italian',calories:165,protein:5,carbs:28,fat:5,
-recipe:`1. Slice a whole grain baguette or sourdough loaf into 2 cm rounds.
-2. Brush lightly with olive oil. Toast in an oven at 180°C for 8 min until golden and crisp throughout.
-3. While still warm, rub the cut face of a raw garlic clove firmly over each slice — the rough bread grates it.
-4. Topping: dice 3 ripe tomatoes. Toss with torn fresh basil, a drizzle of extra-virgin olive oil, salt, pepper, and a splash of balsamic vinegar if desired.
-5. Pile tomato mixture on toast. Serve within 5 min before the bread softens.`,
-notes:'Raw garlic rub is essential. Must use ripe, flavourful tomatoes. Do not dress in advance.'},
+{id:'s048',name:'Bruschetta',type:'snack',cuisine:'Italian',calories:165,protein:5,carbs:28,fat:5,serving:"2 slices bruschetta",
+recipe:`1. Slice whole grain baguette into 2cm rounds. Brush with olive oil.
+2. Toast in oven at 180°C for 8 min until golden throughout.
+3. Rub each slice with raw garlic clove while still warm.
+4. Topping: diced ripe tomatoes, torn basil, olive oil, salt, pepper.
+5. Pile onto toast and serve within 5 min.`,
+notes:'Do not dress in advance. Raw garlic rub is essential.'},
 
-/* ── EXTRA BREAKFAST ── */
-{id:'s049',name:'Tofu Scramble',type:'breakfast',cuisine:'Other',calories:195,protein:14,carbs:7,fat:12,
-recipe:`1. Press 200g firm tofu for 15 min. Crumble into bite-size pieces between your fingers.
-2. Heat 1 tsp olive oil in a non-stick pan. Add ¼ finely diced onion and 1 garlic clove. Sauté 3 min until soft.
-3. Add tofu. Sprinkle ¼ tsp turmeric (for colour), 2 tbsp nutritional yeast (for cheesy flavour), 1 tsp soy sauce, salt, and black pepper.
-4. Cook on medium 5–7 min, stirring occasionally, until lightly golden at the edges.
-5. Add a large handful of spinach at the end, stir until wilted (1 min). Serve on whole grain toast.`,
-notes:'Nutritional yeast adds B12, protein, and umami. The turmeric is both anti-inflammatory and gives a golden colour.'},
+{id:'s052',name:'Roasted Soya Nuts',type:'snack',cuisine:'Indian',calories:140,protein:15,carbs:10,fat:5,serving:"30g roasted soya nuts",
+recipe:`1. Soak 100g whole soya beans overnight. Drain and pat dry completely.
+2. Toss with 1 tsp oil, salt, chilli powder, cumin, chaat masala.
+3. Spread on baking tray. Roast at 180°C for 35–40 min, shaking every 10 min.
+4. They should be golden, hard and crispy throughout. Cool completely.
+5. Store in airtight jar for up to 2 weeks.`,
+notes:'Highest protein snack in the library at 15g. Better than roasted chana.'},
 
-{id:'s050',name:'Soya Keema',type:'dinner',cuisine:'Indian',calories:295,protein:24,carbs:18,fat:10,
-recipe:`1. Soak ¾ cup soya mince (granules) in hot salted water for 15 min. Drain and squeeze out all moisture firmly — do this twice.
-2. In a heavy pan, sauté finely diced onion in 1 tsp oil for 10 min until deep brown.
-3. Add ginger-garlic paste, cook 2 min. Add pureed tomatoes, cook until oil separates.
-4. Add spices: coriander powder, cumin, kashmiri chilli, garam masala, turmeric, salt. Cook 3 min.
-5. Add soya mince and ½ cup frozen peas. Cook on medium for 10–12 min, stirring regularly.
-6. Finish with kasoori methi and fresh coriander. Serve with roti or as stuffing for paratha.`,
-notes:'Highest protein meal in the entire library. Essential recovery meal post-workout. Soya is a complete plant protein.'},
+/* ── EXTRAS ── */
+{id:'s049',name:'Spiced Lentil & Spinach Toast',type:'breakfast',cuisine:'Other',calories:265,protein:14,carbs:32,fat:8,serving:"2 slices toast",
+recipe:`1. Cook ½ cup red lentils in salted water 15 min until soft. Drain well.
+2. Heat 1 tsp olive oil. Sauté diced onion and 3 garlic cloves 3 min until golden.
+3. Add cooked lentils. Add turmeric, 2 tbsp nutritional yeast, soy sauce, smoked paprika, salt, black pepper.
+4. Cook on medium 4 min, mashing slightly, until flavourful and thick.
+5. Add a large handful of spinach, stir until wilted. Pile onto 2 slices whole grain toast. Squeeze lemon over.`,
+notes:'No soya. Nutritional yeast adds B12 and umami. Very hearty and filling.'},
+
+{id:'s050',name:'Soya Keema',type:'dinner',cuisine:'Indian',calories:295,protein:24,carbs:18,fat:10,serving:"1 cup soya keema + 2 chapatis",
+recipe:`1. Soak soya mince (granules) in hot salted water 15 min. Drain and squeeze well — twice.
+2. Sauté diced onion in oil for 10 min until deep brown.
+3. Add ginger-garlic paste, tomato puree. Cook until oil separates.
+4. Add coriander, cumin, kashmiri chilli, garam masala, salt. Cook 3 min.
+5. Add soya mince and frozen peas. Cook 10–12 min. Finish with kasoori methi.`,
+notes:'Highest protein meal in the library. Essential post-workout. Soya is a complete protein.'},
+// ── NEW MEALS: Mushrooms · Silken Tofu back · Cosmix · Gut Drinks ──
+
+{id:'s056',name:'Cosmix Protein Shake',type:'snack',cuisine:'Other',calories:150,protein:22,carbs:8,fat:3,serving:"1 scoop in 250ml water/milk",
+recipe:`1. Add 1 scoop (25g) Cosmix plant protein powder to a shaker or blender.
+2. Add 300ml cold water, oat milk, or almond milk.
+3. Optional: add ½ banana or 1 tbsp peanut butter for calories and flavour.
+4. Shake vigorously for 30 sec or blend 20 sec until smooth and frothy.
+5. Drink immediately after making. Best post-workout or mid-morning.`,
+notes:'22g protein per serving. Bridges the gap to 90g daily target. Have this every day.'},
+
+{id:'s057',name:'Silken Tofu Miso Ramen',type:'lunch',cuisine:'Japanese',calories:320,protein:16,carbs:42,fat:9,serving:"1 bowl ramen (~350g)",
+recipe:`1. Bring 500ml vegetable broth to simmer. Add 1 tsp sesame oil, 1 tsp soy sauce, 1 tsp grated ginger.
+2. Cook 80g ramen noodles separately. Drain and place in bowl.
+3. Dissolve 2 tbsp white miso in 3 tbsp warm broth first, then stir into pot. Do not boil.
+4. Add cubed silken tofu (150g), sliced oyster or button mushrooms (100g), baby spinach. Warm gently 2 min.
+5. Pour broth over noodles. Top with spring onion, sesame seeds, nori, chilli oil.`,
+notes:'Silken tofu is traditional in Japanese broth dishes. Melt-in-mouth texture.'},
+
+{id:'s058',name:'Garlicky Mushroom Lentil Toast',type:'breakfast',cuisine:'Other',calories:270,protein:14,carbs:32,fat:8,serving:"2 slices toast",
+recipe:`NIGHT BEFORE: Boil ½ cup red lentils in salted water 15 min until very soft. Drain, cool, refrigerate.
+
+Morning (10 min):
+1. Heat 2 tsp olive oil. Add 4 sliced garlic cloves, cook on low until golden — 2 min.
+2. Add 200g sliced button mushrooms. High heat, spread flat, do not stir for 2 min. Then toss and cook until golden and dry — 6 min total.
+3. Season with salt, black pepper, lemon juice, fresh coriander.
+4. Add cold cooked lentils from fridge. Stir to warm through — 1 min.
+5. Toast 2 slices whole grain bread. Pile mushroom-lentil mix on top. Eat immediately.`,
+notes:'Lentils MUST be cooked the night before — boiling from scratch in the morning is not realistic. Red lentils need no soaking, just 15 min boiling. Batch-cook at the start of the week and refrigerate for up to 3 days.'},
+
+{id:'s059',name:'Kanji (Fermented Carrot Drink)',type:'snack',cuisine:'Indian',calories:35,protein:1,carbs:7,fat:0,serving:"1 glass (250ml)",
+recipe:`1. Peel and cut 2 purple carrots (or 1 purple + 1 regular) into thin batons.
+2. In a large clean glass jar, dissolve 2 tsp black mustard seeds (coarsely crushed), 1 tsp salt, ½ tsp red chilli powder in 1 litre water.
+3. Add carrots to the jar. Cover loosely with muslin or a loose lid — it needs to breathe.
+4. Leave at room temperature for 2–3 days, stirring once daily, until pleasantly sour and tangy.
+5. Strain and serve chilled over ice. The liquid is the drink; carrots can be eaten too.`,
+notes:'PREP 3 DAYS AHEAD. Probiotic-rich gut health drink. Aids digestion and reduces inflammation. Strain and refrigerate once ready.'},
+
+{id:'s060',name:'Creamy Mushroom Pasta',type:'dinner',cuisine:'Italian',calories:410,protein:14,carbs:58,fat:14,serving:"1 plate pasta (~300g)",
+recipe:`1. Cook 80g pasta until al dente. Reserve ½ cup pasta water.
+2. Slice 300g oyster and button mushrooms (mix both). Fry in 2 tsp olive oil on high heat — spread in one layer, do not stir for 2 min so they caramelise. Season generously.
+3. Add 4 sliced garlic cloves. Cook 1 min. Add a splash of white wine if available.
+4. Add 3 tbsp cashew cream (blend 30g cashews with 100ml water) or oat cream. Stir to coat.
+5. Toss hot pasta in the sauce with pasta water. Finish with nutritional yeast, parsley, black pepper.`,
+notes:'Cashew cream gives silkiness without dairy. Oyster mushrooms give silkiness and button mushrooms give meaty depth — together they are excellent.'},
+
+{id:'s061',name:'Mushroom & Chickpea Masala',type:'dinner',cuisine:'Indian',calories:310,protein:15,carbs:38,fat:10,
+recipe:`1. Slice 250g button mushrooms (or tear oyster mushrooms into pieces). Fry in 1 tsp oil on high heat until golden and all moisture is gone — about 7 min. Set aside.
+2. Sauté onion 8 min until golden. Add ginger-garlic paste, cook 2 min.
+3. Add tomato puree, cook until oil separates. Add coriander, cumin, garam masala, chilli, salt.
+4. Add 1 cup cooked chickpeas and ½ cup water. Simmer 10 min.
+5. Stir in fried mushrooms. Simmer 5 more min. Finish with kasoori methi and coriander.`,
+notes:'Mushrooms add meaty texture and umami depth to this masala. Chickpeas give protein.'},
+
+{id:'s062',name:'Cosmix Protein Smoothie Bowl',type:'breakfast',cuisine:'Other',calories:320,protein:25,carbs:42,fat:6,
+recipe:`1. Blend 1 frozen banana, 100ml oat milk, 1 scoop Cosmix protein powder, 1 tbsp peanut butter, small handful frozen berries.
+2. Blend until very thick and creamy — add minimal liquid. Should be spoonable, not pourable.
+3. Pour into a bowl.
+4. Toppings: granola (2 tbsp), sliced fresh banana, a few berries, drizzle of honey, chia seeds.
+5. Eat immediately before toppings soften.`,
+notes:'25g protein breakfast. The frozen banana is key for thick texture. Great post-workout breakfast.'},
+
+{id:'s063',name:'Mushroom Miso Edamame Bowl',type:'lunch',cuisine:'Japanese',calories:295,protein:15,carbs:38,fat:9,
+recipe:`1. Cook short-grain rice.
+2. Tear 200g oyster mushrooms into strips and slice 100g button mushrooms. Sauté in sesame oil on high until golden and lightly charred. Season with soy sauce.
+3. Miso soup: dissolve 1 tbsp white miso in 400ml hot water. Add wakame seaweed and 100g cubed silken tofu.
+4. Boil ½ cup shelled edamame in salted water 3 min.
+5. Bowl: rice, mushrooms, edamame, cucumber, pickled ginger. Miso soup alongside. Top with sesame seeds and nori.`,
+notes:'Silken tofu in the miso soup is traditional. Tear oyster mushrooms for texture — they get slightly crispy edges in the pan.'},
+
+{id:'s064',name:'Wild Mushroom Risotto',type:'dinner',cuisine:'Italian',calories:390,protein:11,carbs:62,fat:11,
+recipe:`1. Warm 800ml vegetable stock in a separate pan. Keep on low simmer.
+2. Fry onion in 1 tsp olive oil until soft. Add 2 garlic cloves. Add 200g arborio rice, toast 2 min.
+3. Add wine (splash) or lemon juice. Add hot stock one ladle at a time, stirring constantly, waiting until absorbed — about 20 min total.
+4. Meanwhile: fry 200g mushrooms (100g button + 100g torn oyster) separately on high heat in a single layer until deeply golden and caramelised — resist the urge to stir early.
+5. Stir in mushrooms, 2 tbsp nutritional yeast, 1 tsp butter, salt, black pepper. Rest 2 min off heat.`,
+notes:'Constant stirring releases starch for creamy texture. Frying button and oyster mushrooms on high heat until deeply golden gives the risotto its depth — this step makes all the difference.'},
+
+{id:'s065',name:'Beet & Carrot Salad with Walnuts',type:'snack',cuisine:'Other',calories:160,protein:4,carbs:18,fat:9,
+recipe:`1. Grate 1 medium raw beetroot and 1 large carrot on the coarse side of a box grater.
+2. Add a handful of toasted walnuts, finely sliced spring onion, fresh coriander.
+3. Dressing: 1 tbsp lemon juice, 1 tsp cumin powder, ½ tsp chaat masala, salt, 1 tsp olive oil.
+4. Toss everything together. Taste and adjust seasoning.
+5. Best eaten within 2 hours — beetroot stains everything beautifully.`,
+notes:'Raw beetroot is a prebiotic — feeds good gut bacteria. Walnuts add omega-3.'}
+
 ];
+
 
 /* ── SEED IF EMPTY ── */
 async function seedIfEmpty() {
-  const snap = await R('mealLibrary').once('value');
-  const alreadySeeded = snap.val() && Object.keys(snap.val()).length >= 10;
+  // Always overwrite built-in seed meals (s0xx) so Firebase stays in sync with latest SEEDS
+  const updates = {};
+  SEEDS.forEach(m => { updates['mealLibrary/' + m.id] = m; });
+  await db.ref('bloom').update(updates);
 
-  if (!alreadySeeded) {
-    const updates = {};
-    SEEDS.forEach(m => { updates['mealLibrary/' + m.id] = m; });
-    await db.ref('bloom').update(updates);
-    console.log('Library seeded with', SEEDS.length, 'meals.');
-    toast('Meal library ready — 50 recipes loaded! 🌸', 'ok');
-  }
+  // Update libCache with fresh seeds
+  SEEDS.forEach(function(m){ libCache[m.id] = m; });
 
   // Seed this week's meal plan if empty
   await seedWeekPlan();
@@ -2933,44 +3127,47 @@ function renderBloodwork() {
 
 /* ── MEAL PLAN SEED ── */
 // 4-week rotating meal plan - different meals each week, cycles every 4 weeks from May 12 2026
+// 4-week rotation: Cosmix daily snack (~22g), silken tofu in Japanese dishes,
+// soya max 2-3x/week, mushroom dishes, legumes. Target: 85-93g protein/day.
 const ROTATION = [
-  [ // Week A
-    {breakfast:'s001',lunch:'s009',snack:'s039',dinner:'s012'},
-    {breakfast:'s006',lunch:'s018',snack:'s040',dinner:'s019'},
-    {breakfast:'s002',lunch:'s028',snack:'s044',dinner:'s022'},
-    {breakfast:'s007',lunch:'s033',snack:'s041',dinner:'s010'},
-    {breakfast:'s003',lunch:'s036',snack:'s045',dinner:'s014'},
-    {breakfast:'s004',lunch:'s024',snack:'s042',dinner:'s029'},
-    {breakfast:'s049',lunch:'s011',snack:'s043',dinner:'s032'}
+  [ // Week A — target 85-93g/day
+    {breakfast:'s062',lunch:'s012',snack:'s056',dinner:'s050'}, // Mon: 25+22+22+24=93g ✓
+    {breakfast:'s002',lunch:'s018',snack:'s056',dinner:'s022'}, // Tue: 20+20+22+22=84g ✓
+    {breakfast:'s058',lunch:'s061',snack:'s056',dinner:'s013'}, // Wed: 14+15+22+20=71g
+    {breakfast:'s051',lunch:'s054',snack:'s056',dinner:'s021'}, // Thu: 15+20+22+22=79g ✓
+    {breakfast:'s001',lunch:'s009',snack:'s044',dinner:'s038'}, // Fri: 14+14+11+22=61g (soya-free day)
+    {breakfast:'s058',lunch:'s063',snack:'s065',dinner:'s060'}, // Sat: 14+15+4+14=47g (mushroom day)
+    {breakfast:'s006',lunch:'s057',snack:'s059',dinner:'s055'}  // Sun: 10+16+1+16=43g (gut health day)
   ],
   [ // Week B
-    {breakfast:'s005',lunch:'s017',snack:'s046',dinner:'s013'},
-    {breakfast:'s008',lunch:'s027',snack:'s031',dinner:'s025'},
-    {breakfast:'s001',lunch:'s035',snack:'s048',dinner:'s021'},
-    {breakfast:'s006',lunch:'s014',snack:'s039',dinner:'s015'},
-    {breakfast:'s002',lunch:'s037',snack:'s040',dinner:'s050'},
-    {breakfast:'s007',lunch:'s030',snack:'s041',dinner:'s016'},
-    {breakfast:'s004',lunch:'s023',snack:'s042',dinner:'s038'}
+    {breakfast:'s062',lunch:'s012',snack:'s056',dinner:'s022'}, // Mon: 25+22+22+22=91g ✓
+    {breakfast:'s049',lunch:'s037',snack:'s056',dinner:'s050'}, // Tue: 18+18+22+24=82g ✓
+    {breakfast:'s051',lunch:'s061',snack:'s056',dinner:'s013'}, // Wed: 15+15+22+20=72g
+    {breakfast:'s002',lunch:'s018',snack:'s056',dinner:'s029'}, // Thu: 20+20+22+22=84g ✓
+    {breakfast:'s007',lunch:'s009',snack:'s052',dinner:'s038'}, // Fri: 13+14+15+22=64g (soya-light)
+    {breakfast:'s058',lunch:'s064',snack:'s065',dinner:'s032'}, // Sat: 14+11+4+16=45g (mushroom/rest)
+    {breakfast:'s006',lunch:'s063',snack:'s059',dinner:'s015'}  // Sun: 10+15+1+13=39g (light day)
   ],
   [ // Week C
-    {breakfast:'s003',lunch:'s012',snack:'s043',dinner:'s019'},
-    {breakfast:'s049',lunch:'s018',snack:'s044',dinner:'s023'},
-    {breakfast:'s008',lunch:'s009',snack:'s045',dinner:'s034'},
-    {breakfast:'s005',lunch:'s028',snack:'s046',dinner:'s011'},
-    {breakfast:'s001',lunch:'s033',snack:'s047',dinner:'s013'},
-    {breakfast:'s006',lunch:'s024',snack:'s031',dinner:'s029'},
-    {breakfast:'s002',lunch:'s015',snack:'s043',dinner:'s036'}
+    {breakfast:'s062',lunch:'s012',snack:'s056',dinner:'s021'}, // Mon: 25+22+22+22=91g ✓
+    {breakfast:'s002',lunch:'s054',snack:'s056',dinner:'s050'}, // Tue: 20+20+22+24=86g ✓
+    {breakfast:'s058',lunch:'s037',snack:'s056',dinner:'s022'}, // Wed: 14+18+22+22=76g
+    {breakfast:'s051',lunch:'s018',snack:'s056',dinner:'s013'}, // Thu: 15+20+22+20=77g
+    {breakfast:'s001',lunch:'s061',snack:'s044',dinner:'s010'}, // Fri: 14+15+11+16=56g (legume day)
+    {breakfast:'s058',lunch:'s057',snack:'s065',dinner:'s060'}, // Sat: 14+16+4+14=48g (mushroom)
+    {breakfast:'s007',lunch:'s063',snack:'s059',dinner:'s055'}  // Sun: 13+15+1+16=45g (gut health)
   ],
   [ // Week D
-    {breakfast:'s007',lunch:'s032',snack:'s039',dinner:'s021'},
-    {breakfast:'s004',lunch:'s037',snack:'s040',dinner:'s025'},
-    {breakfast:'s005',lunch:'s017',snack:'s042',dinner:'s010'},
-    {breakfast:'s008',lunch:'s035',snack:'s044',dinner:'s050'},
-    {breakfast:'s003',lunch:'s027',snack:'s041',dinner:'s016'},
-    {breakfast:'s049',lunch:'s030',snack:'s048',dinner:'s023'},
-    {breakfast:'s001',lunch:'s011',snack:'s045',dinner:'s038'}
+    {breakfast:'s062',lunch:'s012',snack:'s056',dinner:'s013'}, // Mon: 25+22+22+20=89g ✓
+    {breakfast:'s002',lunch:'s018',snack:'s056',dinner:'s022'}, // Tue: 20+20+22+22=84g ✓
+    {breakfast:'s051',lunch:'s054',snack:'s056',dinner:'s050'}, // Wed: 15+20+22+24=81g ✓
+    {breakfast:'s049',lunch:'s037',snack:'s056',dinner:'s029'}, // Thu: 18+18+22+22=80g ✓
+    {breakfast:'s005',lunch:'s009',snack:'s041',dinner:'s038'}, // Fri: 12+14+7+22=55g (soya-free)
+    {breakfast:'s058',lunch:'s064',snack:'s065',dinner:'s061'}, // Sat: 14+11+4+15=44g (mushroom)
+    {breakfast:'s008',lunch:'s063',snack:'s059',dinner:'s015'}  // Sun: 7+15+1+13=36g (light/gut)
   ]
 ];
+
 
 const APP_START = new Date('2026-05-12T00:00:00');
 
@@ -3121,6 +3318,235 @@ function saveCustomActivity() {
     .catch(function(){ toast('Save failed', 'err'); });
 }
 
+
+/* ── MEAL PREP HINTS ── */
+const PREP_HINTS = {
+  's059': "Start kanji tonight — it needs 2-3 days to ferment at room temperature.",
+  
+  's010': "Soak rajma in plenty of water tonight (8+ hours), then pressure cook with fresh water tomorrow until very soft — about 3 whistles on high + 15 min on low.",
+  's054': "Soak rajma tonight (8+ hours), pressure cook tomorrow until very soft. Cook brown rice fresh (30 min).",
+  's053': "Soak kala chana tonight (8+ hours), then pressure cook with fresh water until tender — takes longer than regular chana.",
+  's009': "If using dry chickpeas, soak overnight then pressure cook until soft. Canned chickpeas — just drain and rinse, no prep needed.",
+  's001': "Soak split moong dal for 4-6 hours, then blend to a smooth batter. Refrigerate overnight — ready to pour and cook on tawa in the morning.",
+  's007': "Soak whole green moong overnight (8 hours), then grind with ginger and chilli to a coarse batter. Cook immediately on tawa.",
+  's055': "Soak chana dal for 1-2 hours, then pressure cook with rice (2 whistles) or cook together on the stove until both are soft.",
+  's006': "If making fresh idli batter, grind soaked rice and urad dal and leave to ferment overnight. Steam in moulds tomorrow.",
+  's008': "Mix ragi dosa batter tonight and rest 30 min before cooking — no soaking needed for ragi flour.",
+  's018': "Soak flat rice noodles in cold water 20 min just before cooking — they go straight from soak into the hot wok.",
+  's027': "Cook extra rice today and refrigerate overnight — cold, dried-out rice fries much better than fresh.",
+  's038': "Slice bell peppers and onion tonight so they are ready to char in the pan tomorrow.",
+  's037': "Cook and refrigerate rice tonight for tomorrow's burrito bowl. Soak and pressure cook black beans if using dried.",
+  's036': "Canned black beans are easiest. If using dried, soak overnight then boil until completely soft before using.",
+  's032': "No advance prep needed — chickpeas from a can work perfectly. Just drain and rinse.",
+  's012': "Soak lobia (black-eye peas) overnight (8+ hours), then pressure cook with fresh water until tender before making the curry.",
+  's013': "Canned chickpeas are fine for Palak Chana. If using dried, soak overnight then pressure cook until soft.",
+  's025': "Press firm tofu for 20 min tonight so it's ready to fry for tomorrow's noodles.",
+  's029': "Press tofu for 20 min tonight so it's ready to fry for tomorrow's donburi."
+}
+
+
+
+function loadTomorrowPrep() {
+  var tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  var tds = dateStr(tomorrow);
+
+  function derivePrepTasks(meal) {
+    // Derive what needs doing tonight based on the meal's actual recipe/id
+    var tasks = [];
+    var id = meal.id || '';
+    var recipe = (meal.recipe || '').toLowerCase();
+    var name = meal.name || '';
+
+    // 1. Explicit PREP_HINTS override (most specific)
+    if (PREP_HINTS[id]) {
+      return [PREP_HINTS[id]];
+    }
+
+    // 2. Legumes that need long soaking + pressure cooking
+    if (/rajma|kidney bean/.test(recipe) && /soak/.test(recipe))
+      tasks.push('Soak rajma overnight in plenty of cold water (8+ hours), then pressure cook with fresh water tomorrow until very soft.');
+    else if (/kala chana|black chickpea/.test(recipe) && /soak/.test(recipe))
+      tasks.push('Soak kala chana overnight (8+ hours). Pressure cook with fresh water tomorrow until tender.');
+    else if (/lobia|black.eye pea/.test(recipe) && /soak/.test(recipe))
+      tasks.push('Soak lobia overnight (8+ hours). Pressure cook with fresh water until tender before making the curry.');
+    else if (/chana dal/.test(recipe) && /soak/.test(recipe))
+      tasks.push('Soak chana dal for 1–2 hours before cooking tomorrow — no overnight soaking needed.');
+
+    // 3. Red lentils for breakfast (need to be pre-boiled)
+    if (/red lentil/.test(recipe) && meal.type === 'breakfast')
+      tasks.push('Boil ½ cup red lentils in salted water 15 min until soft. Drain and refrigerate tonight — they go straight from the fridge into the pan tomorrow morning.');
+
+    // 4. Moong dal / whole moong batter — needs soaking to grind
+    if (/whole.*moong|pesarattu/.test(recipe) && /soak.*overnight|overnight.*soak/.test(recipe))
+      tasks.push('Soak whole green moong overnight (8 hours). Grind to batter tomorrow morning before cooking.');
+    else if (/split moong|moong dal chilla|moong dal.*batter/.test(recipe) && /soak/.test(recipe))
+      tasks.push('Soak split moong dal for 4–6 hours (you can do this first thing in the morning, or soak overnight for convenience). Blend to smooth batter before cooking.');
+
+    // 5. Idli batter — fermentation overnight
+    if (/idli.*batter|ferment.*batter|batter.*ferment/.test(recipe))
+      tasks.push('If making fresh idli batter, grind soaked rice and urad dal tonight and leave to ferment at room temperature overnight.');
+
+    // 6. Ragi dosa batter
+    if (/ragi.*batter|ragi dosa/.test(recipe))
+      tasks.push('Mix ragi dosa batter tonight and rest for at least 30 min before cooking.');
+
+    // 7. Cold rice needed (fried rice)
+    if (/cold.*rice|day.old rice|refrigerat.*rice/.test(recipe))
+      tasks.push('Cook a cup of rice tonight and refrigerate — cold, dried-out rice fries far better than fresh.');
+
+    // 8. Tofu pressing
+    if (/press.*tofu|tofu.*press/.test(recipe))
+      tasks.push('Press firm tofu under a heavy pan or book for 20 min tonight, then refrigerate. It\'ll be ready to slice and fry tomorrow.');
+
+    // 9. Dry chickpeas (vs canned)
+    if (/dry chickpea|dried chickpea/.test(recipe))
+      tasks.push('If using dried chickpeas, soak overnight then pressure cook until soft. Canned chickpeas need no prep.');
+
+    // 10. Kanji fermentation
+    if (/kanji|ferment.*carrot/.test(recipe))
+      tasks.push('Start kanji 2–3 days ahead — mix carrots, mustard seeds, salt, chilli in water, cover loosely, leave at room temperature.');
+
+    // 11. Soya chunks that need soaking
+    if (/soya chunk/.test(recipe) && /soak/.test(recipe))
+      tasks.push('Soak soya chunks in hot salted water for 20 min before cooking. Squeeze out excess water before marinating.');
+
+    return tasks;
+  }
+
+  function drawPrep(plan, libData) {
+    plan = plan || {};
+    libData = libData || {};
+    var tmpl = getTemplateForDay(tds);
+    var allTasks = [];
+    var seen  = {};
+    var tomorrowMeals = [];
+
+    MEAL_TYPES.forEach(function(type) {
+      var raw = plan[type];
+      var eff = (raw === 'none') ? null : (raw != null ? raw : (tmpl ? tmpl[type] : null));
+      var meal = null;
+
+      if (eff) {
+        if (typeof eff === 'object') meal = eff;
+        else meal = libData[eff] || SEEDS.find(function(s){return s.id===eff;}) || null;
+      }
+
+      if (meal) {
+        tomorrowMeals.push({ type: type, meal: meal });
+        var mealId = meal.id || meal.name;
+        if (!seen[mealId]) {
+          seen[mealId] = true;
+          var tasks = derivePrepTasks(meal);
+          tasks.forEach(function(hint) {
+            allTasks.push({ meal: meal.name, hint: hint });
+          });
+        }
+      }
+    });
+
+    var el = document.getElementById('tomorrowPrep');
+    if (!el) return;
+
+    var mealSummaryHtml = tomorrowMeals.length > 0
+      ? '<div style="margin-bottom:.75rem;padding:.65rem;background:var(--bg);border-radius:10px">'
+        + '<div style="font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Tomorrow\'s Meals</div>'
+        + tomorrowMeals.map(function(m) {
+            return '<div style="display:flex;justify-content:space-between;font-size:.8rem;padding:2px 0">'
+              + '<span style="color:var(--muted)">' + MEAL_LABELS[m.type] + '</span>'
+              + '<span style="font-weight:600">' + m.meal.name + '</span>'
+              + '</div>';
+          }).join('')
+        + '</div>'
+      : '';
+
+    if (!allTasks.length) {
+      el.innerHTML = mealSummaryHtml
+        + '<div class="tm ts" style="padding:4px 0">✓ No advance prep needed — everything cooks fresh tomorrow!</div>';
+    } else {
+      el.innerHTML = mealSummaryHtml
+        + '<div style="font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Do Tonight</div>'
+        + allTasks.map(function(t) {
+          return '<div style="display:flex;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">'
+            + '<span style="font-size:1rem;flex-shrink:0">🥘</span>'
+            + '<div><div style="font-size:.82rem;font-weight:600;color:var(--text)">' + t.meal + '</div>'
+            + '<div class="tm ts">' + t.hint + '</div></div>'
+            + '</div>';
+        }).join('');
+    }
+  }
+
+  // Render immediately from localPlanCache (picks up any swaps made this session)
+  var localTmrw = (window._localPlanCache && window._localPlanCache[tds]) || {};
+  var seedLib = {}; SEEDS.forEach(function(s){ seedLib[s.id] = s; });
+  drawPrep(localTmrw, Object.assign({}, seedLib, libCache));
+
+  // Then update with Firebase, merging localPlanCache on top
+  R('mealPlan/' + tds).once('value', function(snap) {
+    var fbPlan = snap.val() || {};
+    var local  = (window._localPlanCache && window._localPlanCache[tds]) || {};
+    R('mealLibrary').once('value', function(libSnap) {
+      drawPrep(Object.assign({}, fbPlan, local), Object.assign({}, seedLib, libSnap.val() || {}, libCache));
+    });
+  });
+}
+
+
+/* ── CHECK-IN HISTORY ── */
+var ciHistoryLoaded = false;
+function toggleCIHistory() {
+  var body = document.getElementById('ciHistoryBody');
+  if (!body) return;
+  var isVisible = body.style.display !== 'none';
+  body.style.display = isVisible ? 'none' : 'block';
+  if (!isVisible && !ciHistoryLoaded) {
+    ciHistoryLoaded = true;
+    loadCIHistory();
+  }
+}
+
+function loadCIHistory() {
+  var el = document.getElementById('ciHistoryList');
+  if (!el) return;
+
+  R('dailyLogs').orderByKey().limitToLast(30).once('value', function(snap) {
+    var logs = snap.val() || {};
+    var entries = Object.entries(logs).sort(function(a,b){ return b[0].localeCompare(a[0]); });
+
+    if (!entries.length) {
+      el.innerHTML = '<div class="tm ts">No check-ins logged yet.</div>';
+      return;
+    }
+
+    var moodEmojis = {1:'😫',2:'😔',3:'😐',4:'🙂',5:'😄'};
+    el.innerHTML = '<div style="overflow-x:auto"><table style="width:100%;font-size:.78rem;border-collapse:collapse">'
+      + '<thead><tr style="border-bottom:2px solid var(--border)">'
+      + '<th style="text-align:left;padding:5px 8px;color:var(--muted);font-weight:700">Date</th>'
+      + '<th style="text-align:center;padding:5px 8px;color:var(--muted);font-weight:700">Weight</th>'
+      + '<th style="text-align:center;padding:5px 8px;color:var(--muted);font-weight:700">Sleep</th>'
+      + '<th style="text-align:center;padding:5px 8px;color:var(--muted);font-weight:700">Energy</th>'
+      + '<th style="text-align:center;padding:5px 8px;color:var(--muted);font-weight:700">Mood</th>'
+      + '<th style="text-align:center;padding:5px 8px;color:var(--muted);font-weight:700">Water</th>'
+      + '<th style="text-align:center;padding:5px 8px;color:var(--muted);font-weight:700">Workout</th>'
+      + '</tr></thead><tbody>'
+      + entries.map(function(pair, rowIdx) {
+          var d = pair[0], log = pair[1];
+          var dLabel = new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
+          var isToday = d === todayStr();
+          var rowBg = isToday ? 'background:var(--lav-l)' : (rowIdx%2===1?'background:var(--bg)':'');
+          return '<tr style="border-bottom:1px solid var(--border);' + rowBg + '">'
+            + '<td style="padding:6px 8px;font-weight:' + (isToday?'700':'500') + '">' + dLabel + (isToday?' ✦':'') + '</td>'
+            + '<td style="text-align:center;padding:6px 8px">' + (log.weight ? log.weight+'kg' : '—') + '</td>'
+            + '<td style="text-align:center;padding:6px 8px">' + (log.sleep ? log.sleep+'h' : '—') + '</td>'
+            + '<td style="text-align:center;padding:6px 8px">' + (log.energy ? '⚡'.repeat(log.energy) : '—') + '</td>'
+            + '<td style="text-align:center;padding:6px 8px">' + (log.mood ? moodEmojis[log.mood] : '—') + '</td>'
+            + '<td style="text-align:center;padding:6px 8px">' + (log.water ? log.water+'🥤' : '—') + '</td>'
+            + '<td style="text-align:center;padding:6px 8px">' + (log.workoutDone ? '💪' : '—') + '</td>'
+            + '</tr>';
+        }).join('')
+      + '</tbody></table></div>';
+  });
+}
 
 function initApp() {
   initFirebase();
